@@ -27,18 +27,20 @@ let allShipments = [];
 async function loadShipments() {
   const content = document.getElementById('contentArea');
   content.innerHTML = `
-    <div class="filter-bar">
+    <div class="filter-bar" style="flex-wrap:wrap; gap:8px">
       <h2 style="margin:0; font-size:18px; color:var(--text)">🚚 Sevkiyat ve Çeki Listeleri</h2>
-      <div style="margin-left:auto; display:flex; gap:12px; align-items:center">
-        <div class="search-box">
-          <input type="text" id="shipmentSearch" placeholder="Müşteri veya Plaka Ara..." oninput="filterShipments()">
-        </div>
-        <select id="shipmentStatusFilter" onchange="filterShipments()" style="height:36px; font-size:13px; border-radius:8px">
+      <div style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+        <input type="date" id="shipmentDateFilter" onchange="filterShipments()" style="height:32px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 8px; width:140px">
+        <input type="text" id="shipmentCustomerFilter" placeholder="Müşteri..." oninput="filterShipments()" style="height:32px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 8px; width:120px">
+        <input type="text" id="shipmentQualityFilter" placeholder="Kalite..." oninput="filterShipments()" style="height:32px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 8px; width:120px">
+        <input type="text" id="shipmentPlateFilter" placeholder="Plaka..." oninput="filterShipments()" style="height:32px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 8px; width:100px">
+        <select id="shipmentStatusFilter" onchange="filterShipments()" style="height:32px; font-size:12px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text); padding:0 6px">
           <option value="">Tüm Durumlar</option>
           <option value="hazırlanıyor">Hazırlanıyor</option>
           <option value="sevk edildi">Sevk Edildi</option>
         </select>
-        <button class="btn btn-primary btn-sm" onclick="loadShipmentForm()">+ Yeni Sevkiyat</button>
+        <button class="btn btn-sm btn-secondary" onclick="clearShipmentFilters()" style="font-size:11px; padding:4px 10px">✕ Temizle</button>
+        <button class="btn btn-primary btn-sm" onclick="loadShipmentForm()" style="height:32px">+ Yeni Sevkiyat</button>
       </div>
     </div>
     <div class="panel">
@@ -47,8 +49,9 @@ async function loadShipments() {
           <thead>
             <tr>
               <th style="width:60px">ID</th>
-              <th>Müşteri</th>
               <th>Tarih</th>
+              <th>Müşteri</th>
+              <th>Kalite</th>
               <th>Adres / Plaka</th>
               <th style="text-align:center">Top</th>
               <th style="text-align:center">Metraj</th>
@@ -58,7 +61,7 @@ async function loadShipments() {
             </tr>
           </thead>
           <tbody id="shipmentTableBody">
-            <tr><td colspan="9"><div class="spinner"></div></td></tr>
+            <tr><td colspan="10"><div class="spinner"></div></td></tr>
           </tbody>
           <tfoot id="shipmentTableFoot" style="background:var(--surface2); font-weight:800; border-top:2px solid var(--border)">
           </tfoot>
@@ -75,16 +78,28 @@ async function loadShipments() {
 }
 
 function filterShipments() {
-  const q = document.getElementById('shipmentSearch').value.toLowerCase();
+  const dateVal = document.getElementById('shipmentDateFilter').value;
+  const cust = document.getElementById('shipmentCustomerFilter').value.toLowerCase();
+  const qual = document.getElementById('shipmentQualityFilter').value.toLowerCase();
+  const plate = document.getElementById('shipmentPlateFilter').value.toLowerCase();
   const status = document.getElementById('shipmentStatusFilter').value;
   
   const filtered = allShipments.filter(s => {
-    const matchQ = (s.customer_name || '').toLowerCase().includes(q) || (s.plate_no || '').toLowerCase().includes(q);
-    const matchStatus = status === '' || s.status === status;
-    return matchQ && matchStatus;
+    const matchDate = !dateVal || s.shipment_date === dateVal;
+    const matchCust = !cust || (s.customer_name || '').toLowerCase().includes(cust);
+    const matchQual = !qual || (s.products_text || '').toLowerCase().includes(qual);
+    const matchPlate = !plate || (s.plate_no || '').toLowerCase().includes(plate);
+    const matchStatus = !status || s.status === status;
+    return matchDate && matchCust && matchQual && matchPlate && matchStatus;
   });
   
   renderShipmentList(filtered);
+}
+
+function clearShipmentFilters() {
+  ['shipmentDateFilter','shipmentCustomerFilter','shipmentQualityFilter','shipmentPlateFilter','shipmentStatusFilter']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  filterShipments();
 }
 
 function renderShipmentList(data) {
@@ -92,7 +107,7 @@ function renderShipmentList(data) {
   const tfoot = document.getElementById('shipmentTableFoot');
   
   if (!data.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text3)">Arama kriterlerine uygun sevkiyat bulunamadı.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text3)">Arama kriterlerine uygun sevkiyat bulunamadı.</td></tr>';
     tfoot.innerHTML = '';
     return;
   }
@@ -112,8 +127,11 @@ function renderShipmentList(data) {
     return `
       <tr>
         <td style="color:var(--text3)">#${s.id}</td>
-        <td style="font-weight:700; color:var(--text)">${s.customer_name || '-'}${s.order_no ? `<br><small style="color:var(--accent); font-size:10px">📋 ${s.order_no}</small>` : ''}</td>
         <td>${fmtDate(s.shipment_date)}</td>
+        <td style="font-weight:700; color:var(--text)">${s.customer_name || '-'}${s.order_no ? `<br><small style="color:var(--accent); font-size:10px">📋 ${s.order_no}</small>` : ''}</td>
+        <td style="font-size:12px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+          ${s.products_text ? `<span style="font-weight:600; color:var(--text)">${s.products_text}</span>` : '<span style="color:var(--text3)">—</span>'}
+        </td>
         <td style="font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
            ${s.shipping_address || '-'} <br>
            <small style="color:var(--accent)">🚗 ${s.plate_no || '-'}</small>
@@ -126,8 +144,9 @@ function renderShipmentList(data) {
           <div style="display:flex; gap:4px; justify-content:flex-end">
             <button class="btn btn-sm btn-icon btn-secondary" onclick="viewShipmentDetails(${s.id})" title="Detay">👁</button>
             <button class="btn btn-sm btn-icon btn-secondary" onclick="loadShipmentForm(${s.id})" title="Düzenle">✏️</button>
+            <button class="btn btn-sm btn-icon" style="background:${s.status==='sevk edildi'?'var(--warning)':'var(--accent)'}; color:#fff; border:none" onclick="toggleShipmentStatus(${s.id},'${s.status}')" title="${s.status==='sevk edildi'?'Geri Al':'Sevk Et'}">${s.status==='sevk edildi'?'↩️':'🚚'}</button>
             <button class="btn btn-sm btn-icon btn-danger" onclick="deleteShipment(${s.id})" title="Sil">🗑</button>
-            <button class="btn btn-sm btn-secondary" onclick="printPackingList(${s.id}, true)" style="border-color:var(--text3); color:var(--text3); padding:4px 8px; font-size:10px">👁 ÖNİZLE</button>
+            <button class="btn btn-sm btn-secondary" onclick="printPackingList(${s.id}, true)" style="border-color:var(--text3); color:var(--text3); padding:4px 8px; font-size:10px">📋 ÖNİZLE</button>
             <button class="btn btn-sm btn-secondary" onclick="printPackingList(${s.id})" style="border-color:var(--accent); color:var(--accent); padding:4px 8px; font-size:10px">🖨 ÇEKİ</button>
           </div>
         </td>
@@ -137,7 +156,7 @@ function renderShipmentList(data) {
 
   tfoot.innerHTML = `
     <tr>
-      <td colspan="4" style="text-align:right; color:var(--text2)">TOPLAM (${data.length} Sevk):</td>
+      <td colspan="5" style="text-align:right; color:var(--text2)">TOPLAM (${data.length} Sevk):</td>
       <td style="text-align:center; color:var(--text)">${grandRolls} Top</td>
       <td style="text-align:center; color:var(--accent)">${grandMeters.toFixed(1)} mt</td>
       <td style="text-align:center; color:var(--purple)">${grandWeight.toFixed(1)} kg</td>
@@ -221,6 +240,13 @@ async function loadShipmentForm(id = null) {
               <div class="form-floating form-full">
                 <textarea id="shipNotes" placeholder=" " rows="2">${shipmentData ? shipmentData.notes || '' : ''}</textarea>
                 <label>Notlar</label>
+              </div>
+              <div class="form-floating form-full">
+                <select id="shipStatus">
+                  <option value="hazırlanıyor" ${(!shipmentData || shipmentData.status === 'hazırlanıyor') ? 'selected' : ''}>Hazırlanıyor</option>
+                  <option value="sevk edildi" ${shipmentData && shipmentData.status === 'sevk edildi' ? 'selected' : ''}>Sevk Edildi</option>
+                </select>
+                <label style="top:8px;transform:none;font-size:10px;color:var(--accent)">Durum</label>
               </div>
             </div>
 
@@ -414,7 +440,8 @@ async function saveShipment(e) {
       shipment_date: document.getElementById('shipDate').value,
       shipping_address: document.getElementById('shipAddress').value,
       plate_no: document.getElementById('shipPlate').value,
-      notes: document.getElementById('shipNotes').value
+      notes: document.getElementById('shipNotes').value,
+      status: document.getElementById('shipStatus').value
     }, 'POST');
 
     if (res.success) {
@@ -453,6 +480,16 @@ async function executeDeleteShipment(id) {
   try {
     await api('shipment_delete', { id }, 'POST');
     toast('Sevkiyat silindi ve toplar stoğa aktarıldı');
+    loadShipments();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function toggleShipmentStatus(id, currentStatus) {
+  const newStatus = currentStatus === 'hazırlanıyor' ? 'sevk edildi' : 'hazırlanıyor';
+  const label = newStatus === 'sevk edildi' ? 'Sevk Edildi' : 'Hazırlanıyor';
+  try {
+    await api('shipments', { id, status: newStatus }, 'POST');
+    toast(`Sevkiyat #${id} durumu → ${label}`);
     loadShipments();
   } catch (e) { toast(e.message, 'error'); }
 }

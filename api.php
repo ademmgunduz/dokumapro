@@ -2044,11 +2044,15 @@ switch ($action) {
             $sql = "SELECT s.*, c.name as customer_name, o.order_no,
                     (SELECT COUNT(*) FROM quality_controls WHERE shipment_id = s.id) as roll_count,
                     (SELECT SUM(length_m) FROM quality_controls WHERE shipment_id = s.id) as total_meters,
-                    (SELECT SUM(weight_kg) FROM quality_controls WHERE shipment_id = s.id) as total_weight
+                    (SELECT SUM(weight_kg) FROM quality_controls WHERE shipment_id = s.id) as total_weight,
+                    (SELECT GROUP_CONCAT(code, ', ') FROM (SELECT DISTINCT p.code
+                     FROM quality_controls qc
+                     LEFT JOIN products p ON qc.product_id = p.id
+                     WHERE qc.shipment_id = s.id)) as products_text
                     FROM shipments s 
                     LEFT JOIN customers c ON s.customer_id = c.id 
                     LEFT JOIN orders o ON s.order_id = o.id
-                    ORDER BY s.shipment_date DESC, s.id DESC";
+                    ORDER BY s.shipment_date DESC, c.name ASC, s.id DESC";
             $result = $db->query($sql);
             $rows = [];
             while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
@@ -2057,19 +2061,31 @@ switch ($action) {
             $input = $_POST;
             $id = intval($input['id'] ?? 0);
             if ($id > 0) {
-                $stmt = $db->prepare("UPDATE shipments SET customer_id=:cid, order_id=:oid, shipment_date=:sdate, shipping_address=:addr, plate_no=:plate, notes=:notes WHERE id=:id");
+                if (isset($input['customer_id'])) {
+                    $stmt = $db->prepare("UPDATE shipments SET customer_id=:cid, order_id=:oid, shipment_date=:sdate, shipping_address=:addr, plate_no=:plate, notes=:notes, status=:status WHERE id=:id");
+                    $stmt->bindValue(':cid', intval($input['customer_id']));
+                    $oid = !empty($input['order_id']) ? intval($input['order_id']) : null;
+                    $stmt->bindValue(':oid', $oid, $oid ? SQLITE3_INTEGER : SQLITE3_NULL);
+                    $stmt->bindValue(':sdate', sanitize($input['shipment_date']));
+                    $stmt->bindValue(':addr', sanitize($input['shipping_address']));
+                    $stmt->bindValue(':plate', sanitize($input['plate_no'] ?? ''));
+                    $stmt->bindValue(':notes', sanitize($input['notes'] ?? ''));
+                } else {
+                    $stmt = $db->prepare("UPDATE shipments SET status=:status WHERE id=:id");
+                }
                 $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
             } else {
-                $stmt = $db->prepare("INSERT INTO shipments (customer_id, order_id, shipment_date, shipping_address, plate_no, notes, created_at) 
-                                      VALUES (:cid, :oid, :sdate, :addr, :plate, :notes, :now)");
+                $stmt = $db->prepare("INSERT INTO shipments (customer_id, order_id, shipment_date, shipping_address, plate_no, notes, status, created_at) 
+                                      VALUES (:cid, :oid, :sdate, :addr, :plate, :notes, :status, :now)");
+                $stmt->bindValue(':cid', intval($input['customer_id']));
+                $oid = !empty($input['order_id']) ? intval($input['order_id']) : null;
+                $stmt->bindValue(':oid', $oid, $oid ? SQLITE3_INTEGER : SQLITE3_NULL);
+                $stmt->bindValue(':sdate', sanitize($input['shipment_date']));
+                $stmt->bindValue(':addr', sanitize($input['shipping_address']));
+                $stmt->bindValue(':plate', sanitize($input['plate_no'] ?? ''));
+                $stmt->bindValue(':notes', sanitize($input['notes'] ?? ''));
             }
-            $stmt->bindValue(':cid', intval($input['customer_id']));
-            $oid = !empty($input['order_id']) ? intval($input['order_id']) : null;
-            $stmt->bindValue(':oid', $oid, $oid ? SQLITE3_INTEGER : SQLITE3_NULL);
-            $stmt->bindValue(':sdate', sanitize($input['shipment_date']));
-            $stmt->bindValue(':addr', sanitize($input['shipping_address']));
-            $stmt->bindValue(':plate', sanitize($input['plate_no'] ?? ''));
-            $stmt->bindValue(':notes', sanitize($input['notes'] ?? ''));
+            $stmt->bindValue(':status', sanitize($input['status'] ?? 'hazırlanıyor'));
             $stmt->execute();
             $shipmentId = $id > 0 ? $id : $db->lastInsertRowID();
             jsonResponse(['success' => true, 'id' => $shipmentId], $id > 0 ? 200 : 201);
