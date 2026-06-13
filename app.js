@@ -366,29 +366,32 @@ async function updateExchangeRates() {
 }
 
 function toggleFullScreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
+  const isFull = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!isFull) {
+    const req = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+    req.call(document.documentElement).catch(err => {
       toast(`Tam ekran hatası: ${err.message}`, 'error');
     });
   } else {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    }
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    exit.call(document);
   }
 }
 
-// Tam ekran durum değişikliğini izle ve ikonu güncelle
-document.addEventListener('fullscreenchange', () => {
+function updateFullscreenBtn() {
   const btn = document.getElementById('fullScreenBtn');
   if (!btn) return;
-  if (document.fullscreenElement) {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
     btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6m0 0v6m0-6-6 6m16-6h-6m0 0v6m0-6 6 6M4 10h6m0 0V4m0 6-6-6m16 6h-6m0 0V4m0 6 6-6"/></svg>`;
     btn.title = "Tam Ekrandan Çık";
   } else {
     btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>`;
     btn.title = "Tam Ekran";
   }
-});
+}
+
+document.addEventListener('fullscreenchange', updateFullscreenBtn);
+document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
 
 function updateTopbarDate() {
   const el = document.getElementById('topbarDate');
