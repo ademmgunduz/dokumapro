@@ -1,0 +1,7 @@
+cookie.txt
+db.sqlite
+adem_sps.db
+uploads/
+*.log
+.DS_Store
+Thumbs.db
