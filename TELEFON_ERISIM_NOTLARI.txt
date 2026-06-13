@@ -1,0 +1,119 @@
+=== DOKUMA-QC PROJESI TELEFON ERISIM NOTLARI ===
+Tarih: 3 Mayıs 2026
+
+--- DURUM ANALIZI ---
+- Proje dizini: /Users/hentekstil/Desktop/ADEM SPS/dokuma-qc
+- PHP dosyalari: index.php, analiz.php, api.php, config.php, test_qc.php, vb.
+- Veritabani: SQLite (adem_sps.db)
+- Yerel IP adresi: 192.168.1.104
+- Ag: Wi-Fi (ayni aga bagli olmalı)
+
+--- TELEFONDAN ERISIM ADIMLARI ---
+
+1. Terminal'de sunucuyu baslat:
+   cd "/Users/hentekstil/Desktop/ADEM SPS/dokuma-qc".   once bunu calıstır. 
+   php -S 0.0.0.0:8000.  sonra bundan dınle. 
+
+2. Telefonda tarayici ac ve su adresi yaz:
+   http://192.168.1.104:8000/index.php
+
+3. Diger sayfalar icin:
+   http://192.168.1.104:8000/kalitekontrol.html
+   http://192.168.1.104:8000/analiz.php
+
+4. Sunucuyu durdurmak icin Terminal'de Ctrl+C
+
+--- ONEMLI NOTLAR ---
+- PHP dahili sunucusu sadece gelistirme amaçlıdır
+- Telefon ve bilgisayar ayni Wi-Fi agında olmalı
+- Guvenlik duvari izin vermiyorsa ayarlardan izin verilmeli
+
+
+
+
+HTTP 500 hatası genellikle PHP kodunda bir sorun olduğunu veya sunucuda bir ayarın eksik olduğunu gösterir. Bu projede SQLite kullandığımız için, XAMPP'ta en yaygın sebep SQLite eklentisinin kapalı olmasıdır.
+
+Şu adımları izleyerek hatayı çözebiliriz:
+
+1. SQLite Eklentisini Aktif Edin
+XAMPP Control Panel'i açın.
+Apache satırındaki Config butonuna tıklayın ve PHP (php.ini) dosyasını seçin.
+Açılan metin belgesinde Ctrl + F yaparak şu satırları aratın:
+;extension=pdo_sqlite
+;extension=sqlite3
+Bu satırların başındaki noktalı virgülü (;) silin (Yani şu hale gelsinler):
+extension=pdo_sqlite
+extension=sqlite3
+Dosyayı kaydedin ve kapatın.
+XAMPP Control Panel'den Apache'yi Stop yapıp tekrar Start yapın.
+2. Yazma İzinlerini Kontrol Edin
+SQLite veritabanına veri yazabilmek için klasörün izinleri açık olmalıdır:
+
+C:\xampp\htdocs\dokuma-qc klasörüne sağ tıklayın.
+Özellikler > Güvenlik sekmesine gidin.
+Everyone (veya "Herkes") kullanıcısını ekleyip "Tam Denetim" (Full Control) izni verin.
+3. Hatanın Tam Sebebini Görmek İçin
+Eğer hala 500 hatası alıyorsanız, PHP hatalarını ekrana bastıralım. config.php dosyanızın en üstüne ( <?php satırından hemen sonraya) şu kodları ekleyin:
+
+php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+Bunu ekledikten sonra sayfayı yenileyince 500 hatası yerine hatanın gerçek sebebini (örneğin: "SQLite driver not found") yazacaktır.
+
+Lütfen SQLite eklentilerini açıp Apache'yi yeniden başlatmayı deneyin, büyük ihtimalle çözülecektir.
+
+
+
+
+
+
+
+--- TELEFONDAN ERISIM ADIMLARI ---
+
+1. Terminal'de sunucuyu baslat:
+   cd "/Users/hentekstil/Desktop/ADEM SPS/dokuma-qc"
+   php -S 0.0.0.0:8000
+
+2. Telefonda tarayici ac ve su adresi yaz:
+   http://192.168.1.104:8000/index.php
+
+
+
+cd "/Users/hentekstil/Desktop/ADEM SPS/dokuma-qc"
+
+dokuma-qc % php -S 0.0.0.0:8000
+
+
+
+HTTP 500 hatası genellikle PHP kodunda bir sorun olduğunu veya sunucuda bir ayarın eksik olduğunu gösterir. Bu projede SQLite kullandığımız için, XAMPP'ta en yaygın sebep SQLite eklentisinin kapalı olmasıdır.
+
+Şu adımları izleyerek hatayı çözebiliriz:
+
+1. SQLite Eklentisini Aktif Edin
+XAMPP Control Panel'i açın.
+Apache satırındaki Config butonuna tıklayın ve PHP (php.ini) dosyasını seçin.
+Açılan metin belgesinde Ctrl + F yaparak şu satırları aratın:
+;extension=pdo_sqlite
+;extension=sqlite3
+Bu satırların başındaki noktalı virgülü (;) silin (Yani şu hale gelsinler):
+extension=pdo_sqlite
+extension=sqlite3
+Dosyayı kaydedin ve kapatın.
+XAMPP Control Panel'den Apache'yi Stop yapıp tekrar Start yapın.
+2. Yazma İzinlerini Kontrol Edin
+SQLite veritabanına veri yazabilmek için klasörün izinleri açık olmalıdır:
+
+C:\xampp\htdocs\dokuma-qc klasörüne sağ tıklayın.
+Özellikler > Güvenlik sekmesine gidin.
+Everyone (veya "Herkes") kullanıcısını ekleyip "Tam Denetim" (Full Control) izni verin.
+3. Hatanın Tam Sebebini Görmek İçin
+Eğer hala 500 hatası alıyorsanız, PHP hatalarını ekrana bastıralım. config.php dosyanızın en üstüne ( <?php satırından hemen sonraya) şu kodları ekleyin:
+
+php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+Bunu ekledikten sonra sayfayı yenileyince 500 hatası yerine hatanın gerçek sebebini (örneğin: "SQLite driver not found") yazacaktır.
+
+Lütfen SQLite eklentilerini açıp Apache'yi yeniden başlatmayı deneyin, büyük ihtimalle çözülecektir

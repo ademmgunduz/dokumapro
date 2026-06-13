@@ -1,0 +1,1199 @@
+<?php 
+require_once __DIR__ . '/config.php'; 
+if (!isLoggedIn()) {
+    header('Location: index.php');
+    exit;
+}
+
+$loadedProduct = null;
+$productId = intval($_GET['product_id'] ?? 0);
+if ($productId > 0) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT * FROM products WHERE id = ? AND is_active = 1");
+    $stmt->bindValue(1, $productId, SQLITE3_INTEGER);
+    $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if ($row) {
+        $loadedProduct = $row;
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="tr" data-theme="<?php echo htmlspecialchars($_GET['theme'] ?? 'dark'); ?>">
+<head>
+<script>
+window._loadedProduct = <?php echo $loadedProduct ? json_encode($loadedProduct) : 'null'; ?>;
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dokuma Ham Maliyet · <?php echo getSetting('company_name', 'HENTEKSTİL'); ?></title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ══ TEMA DEĞİŞKENLERİ ══ */
+[data-theme="dark"] {
+  --bg:#080a0f; --s1:#0e1118; --s2:#141820; --s3:#1c2230; --s4:#242d3e;
+  --b1:#1e2535; --b2:#2e3a50; --b3:#3d4f6a;
+  --text:#dde3f0; --t2:#8896b0; --t3:#4a5568; --t4:#2d3748;
+  --grid-line:rgba(74,158,255,.018);
+  --topbar-bg:rgba(8,10,15,.94);
+  --shadow:0 4px 20px rgba(0,0,0,.4);
+  --inp-bg:var(--s3); --inp-border:var(--b1); --inp-focus-bg:var(--s4);
+}
+[data-theme="light"] {
+  --bg:#f0f2f7; --s1:#ffffff; --s2:#f5f7fb; --s3:#eaecf3; --s4:#dde1ee;
+  --b1:#d0d5e8; --b2:#b8bfd6; --b3:#9aa3c0;
+  --text:#1a2035; --t2:#4a5568; --t3:#9aa3bf; --t4:#c8cdd8;
+  --grid-line:rgba(74,100,200,.03);
+  --topbar-bg:rgba(240,242,247,.96);
+  --shadow:0 4px 20px rgba(0,0,0,.08);
+  --inp-bg:#fff; --inp-border:var(--b1); --inp-focus-bg:#f8f9ff;
+}
+
+/* aksan renkleri her iki temada aynı */
+:root {
+  --warp:#e8933a; --warp2:#ffc07a; --warp-g:rgba(232,147,58,.10);
+  --weft:#1cb870; --weft2:#3ae8a0; --weft-g:rgba(58,232,160,.08);
+  --blue:#4a9eff; --blue-g:rgba(74,158,255,.10);
+  --purple:#b87fff; --purple-g:rgba(184,127,255,.10);
+  --red:#ff5050; --green:#3ae8a0;
+  --mono:'IBM Plex Mono',monospace; --sans:'DM Sans',sans-serif; --r:6px;
+}
+
+/* ══ EK TEMALAR (Ana uygulama ile uyumlu) ══ */
+[data-theme="ipex"] {
+  --bg:#0B1C2E; --s1:#0F253B; --s2:#16324D; --s3:#1E3F5F; --s4:#244C73;
+  --b1:#244C73; --b2:#2D5D8A; --b3:#3A76AD;
+  --text:#FFFFFF; --t2:#B0BEC5; --t3:#78909C; --t4:#546E7A;
+  --grid-line:rgba(255,255,255,0.03); --topbar-bg:rgba(11,28,46,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.3);
+  --inp-bg:#16324D; --inp-border:#244C73; --inp-focus-bg:#1E3F5F;
+}
+[data-theme="emerald"] {
+  --bg:#06110E; --s1:#0A1B16; --s2:#10261F; --s3:#18362D; --s4:#1E4237;
+  --b1:#1E4237; --b2:#285749; --b3:#357361;
+  --text:#ECFDF5; --t2:#A7F3D0; --t3:#34D399; --t4:#065F46;
+  --grid-line:rgba(16,185,129,0.03); --topbar-bg:rgba(6,17,14,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.3);
+  --inp-bg:#10261F; --inp-border:#1E4237; --inp-focus-bg:#18362D;
+}
+[data-theme="purple"] {
+  --bg:#0c0a15; --s1:#141125; --s2:#1c1833; --s3:#262144; --s4:#2e2852;
+  --b1:#2e2852; --b2:#3a3266; --b3:#4a3f80;
+  --text:#f5f3ff; --t2:#c4b5fd; --t3:#8b5cf6; --t4:#6d28d9;
+  --grid-line:rgba(139,92,246,0.03); --topbar-bg:rgba(12,10,21,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#1c1833; --inp-border:#2e2852; --inp-focus-bg:#262144;
+}
+[data-theme="sunset"] {
+  --bg:#120a0a; --s1:#1c1111; --s2:#281818; --s3:#341f1f; --s4:#442828;
+  --b1:#442828; --b2:#543232; --b3:#6b3f3f;
+  --text:#fff7ed; --t2:#ffedd5; --t3:#fb923c; --t4:#ea580c;
+  --grid-line:rgba(249,115,22,0.03); --topbar-bg:rgba(18,10,10,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#281818; --inp-border:#442828; --inp-focus-bg:#341f1f;
+}
+[data-theme="midnight"] {
+  --bg:#020617; --s1:#0f172a; --s2:#1e293b; --s3:#334155; --s4:#475569;
+  --b1:#1e293b; --b2:#475569; --b3:#64748b;
+  --text:#f8fafc; --t2:#94a3b8; --t3:#38bdf8; --t4:#0ea5e9;
+  --grid-line:rgba(56,189,248,0.03); --topbar-bg:rgba(2,6,23,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#1e293b; --inp-border:#334155; --inp-focus-bg:#334155;
+}
+[data-theme="carbon"] {
+  --bg:#111; --s1:#1a1a1a; --s2:#242424; --s3:#2e2e2e; --s4:#333;
+  --b1:#333; --b2:#444; --b3:#555;
+  --text:#fff; --t2:#a0aec0; --t3:#e2e8f0; --t4:#718096;
+  --grid-line:rgba(255,255,255,0.02); --topbar-bg:rgba(17,17,17,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.5);
+  --inp-bg:#242424; --inp-border:#333; --inp-focus-bg:#2e2e2e;
+}
+[data-theme="earth"] {
+  --bg:#0f0d0c; --s1:#1a1715; --s2:#24201e; --s3:#2e2926; --s4:#3e3732;
+  --b1:#3e3732; --b2:#4e453f; --b3:#5d534c;
+  --text:#fef3c7; --t2:#d4d4d8; --t3:#d97706; --t4:#92400e;
+  --grid-line:rgba(217,119,6,0.03); --topbar-bg:rgba(15,13,12,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#24201e; --inp-border:#3e3732; --inp-focus-bg:#2e2926;
+}
+[data-theme="cyber"] {
+  --bg:#050505; --s1:#0d0d0d; --s2:#151515; --s3:#1f1f1f; --s4:#262626;
+  --b1:#262626; --b2:#ff00ff; --b3:#00ffff;
+  --text:#fff; --t2:#00ffff; --t3:#ff00ff; --t4:#ffff00;
+  --grid-line:rgba(0,255,255,0.03); --topbar-bg:rgba(5,5,5,0.94);
+  --shadow:0 4px 20px rgba(0,255,255,0.15);
+  --inp-bg:#151515; --inp-border:#262626; --inp-focus-bg:#1f1f1f;
+}
+[data-theme="neon"] {
+  --bg:#090912; --s1:#121225; --s2:#1a1a35; --s3:#222245; --s4:#2d2d5a;
+  --b1:#2d2d5a; --b2:#ff00ff; --b3:#00f2ff;
+  --text:#ffffff; --t2:#00f2ff; --t3:#ff00ff; --t4:#7000ff;
+  --grid-line:rgba(0,242,255,0.04); --topbar-bg:rgba(9,9,18,0.94);
+  --shadow:0 4px 20px rgba(0,242,255,0.15);
+  --inp-bg:#1a1a35; --inp-border:#2d2d5a; --inp-focus-bg:#222245;
+}
+[data-theme="ocean"] {
+  --bg:#050b14; --s1:#0a1424; --s2:#0f1e33; --s3:#152842; --s4:#1a3252;
+  --b1:#1a3252; --b2:#00d4aa; --b3:#00b4ff;
+  --text:#e1e8f0; --t2:#94a3b8; --t3:#00d4aa; --t4:#475569;
+  --grid-line:rgba(0,212,170,0.03); --topbar-bg:rgba(5,11,20,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#0f1e33; --inp-border:#1a3252; --inp-focus-bg:#152842;
+}
+[data-theme="forest"] {
+  --bg:#081008; --s1:#0d1a0d; --s2:#142614; --s3:#1b331b; --s4:#224022;
+  --b1:#224022; --b2:#10b981; --b3:#34d399;
+  --text:#ecfdf5; --t2:#a7f3d0; --t3:#10b981; --t4:#065f46;
+  --grid-line:rgba(16,185,129,0.03); --topbar-bg:rgba(8,16,8,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.4);
+  --inp-bg:#142614; --inp-border:#224022; --inp-focus-bg:#1b331b;
+}
+[data-theme="gold"] {
+  --bg:#0a0a0a; --s1:#141414; --s2:#1f1f1f; --s3:#2a2a2a; --s4:#333333;
+  --b1:#333333; --b2:#d4af37; --b3:#f3cf7a;
+  --text:#ffffff; --t2:#d1d1d1; --t3:#d4af37; --t4:#888888;
+  --grid-line:rgba(212,175,55,0.02); --topbar-bg:rgba(10,10,10,0.94);
+  --shadow:0 4px 20px rgba(0,0,0,0.5);
+  --inp-bg:#1f1f1f; --inp-border:#333333; --inp-focus-bg:#2a2a2a;
+}
+[data-theme="arctic"] {
+  --bg:#f0f4f8; --s1:#ffffff; --s2:#e1e8f0; --s3:#d1d9e6; --s4:#cbd5e0;
+  --b1:#cbd5e0; --b2:#a0aec0; --b3:#718096;
+  --text:#1a365d; --t2:#4a5568; --t3:#3182ce; --t4:#2c5282;
+  --grid-line:rgba(49,130,206,0.04); --topbar-bg:rgba(240,244,248,0.94);
+  --shadow:0 4px 15px rgba(0,0,0,0.05);
+  --inp-bg:#fff; --inp-border:#cbd5e0; --inp-focus-bg:#f7fafc;
+}
+[data-theme="sand"] {
+  --bg:#fdfaf6; --s1:#ffffff; --s2:#f4eee1; --s3:#e9dec6; --s4:#d7c9b1;
+  --b1:#d7c9b1; --b2:#b8a07e; --b3:#92400e;
+  --text:#451a03; --t2:#78350f; --t3:#92400e; --t4:#b45309;
+  --grid-line:rgba(146,64,14,0.04); --topbar-bg:rgba(253,250,246,0.94);
+  --shadow:0 4px 15px rgba(0,0,0,0.05);
+  --inp-bg:#fff; --inp-border:#d7c9b1; --inp-focus-bg:#fdfaf6;
+}
+[data-theme="mint"] {
+  --bg:#f6fcf9; --s1:#ffffff; --s2:#e6f4ed; --s3:#d1e9dc; --s4:#b3d9c3;
+  --b1:#b3d9c3; --b2:#82c2a0; --b3:#059669;
+  --text:#064e3b; --t2:#065f46; --t3:#059669; --t4:#10b981;
+  --grid-line:rgba(5,150,105,0.04); --topbar-bg:rgba(246,252,249,0.94);
+  --shadow:0 4px 15px rgba(0,0,0,0.05);
+  --inp-bg:#fff; --inp-border:#b3d9c3; --inp-focus-bg:#f6fcf9;
+}
+[data-theme="rose"] {
+  --bg:#fff5f7; --s1:#ffffff; --s2:#ffe4e9; --s3:#ffd1da; --s4:#ffb8c6;
+  --b1:#ffb8c6; --b2:#ff8fa3; --b3:#db2777;
+  --text:#831843; --t2:#be185d; --t3:#db2777; --t4:#f472b6;
+  --grid-line:rgba(219,39,119,0.04); --topbar-bg:rgba(255,245,247,0.94);
+  --shadow:0 4px 15px rgba(0,0,0,0.05);
+  --inp-bg:#fff; --inp-border:#ffb8c6; --inp-focus-bg:#fff5f7;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--mono);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;transition:background .25s,color .25s}
+
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:44px 44px;pointer-events:none;z-index:0;
+}
+
+/* ── HEADER ── */
+.topbar{
+  position:sticky;top:0;z-index:200;
+  background:var(--topbar-bg);backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--b1);
+  padding:0 20px;height:50px;
+  display:flex;align-items:center;gap:0;
+  transition:background .25s,border-color .25s;
+}
+.tb-brand{font-family:var(--sans);font-weight:800;font-size:13px;letter-spacing:.18em;color:var(--blue);text-transform:uppercase;padding-right:16px;border-right:1px solid var(--b1);margin-right:16px}
+.tb-title{font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text)}
+.tb-mod{font-size:10px;color:var(--t3);margin-left:5px}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+/* kur pill */
+.kur-pill{display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--b1);border-radius:20px;padding:4px 12px;font-size:11px}
+.kur-dot{width:6px;height:6px;border-radius:50%;background:var(--t3);transition:background .3s;flex-shrink:0}
+.kur-dot.live{background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 2s infinite}
+.kur-dot.err{background:var(--warp)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* tema toggle butonu */
+.theme-btn{
+  display:flex;align-items:center;gap:6px;
+  background:var(--s2);border:1px solid var(--b1);border-radius:20px;
+  padding:4px 11px;cursor:pointer;font-family:var(--mono);font-size:11px;
+  color:var(--t2);transition:all .15s;white-space:nowrap;
+}
+.theme-btn:hover{background:var(--s3);color:var(--text)}
+.theme-icon{font-size:13px;line-height:1}
+
+/* ── LAYOUT ── */
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:18px 16px 80px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:880px){.two-col{grid-template-columns:1fr}}
+
+/* ── PANEL ── */
+.panel{background:var(--s1);border:1px solid var(--b1);border-radius:10px;overflow:hidden;transition:border-color .2s,background .25s;animation:fadeUp .28s ease both;box-shadow:var(--shadow)}
+.panel:focus-within{border-color:var(--b2)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.ph{display:flex;align-items:center;gap:9px;padding:10px 15px;border-bottom:1px solid var(--b1);background:var(--s2);transition:background .25s}
+.ph-ico{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.ic-w{background:rgba(232,147,58,.14)}.ic-a{background:rgba(58,232,160,.11)}
+.ic-c{background:rgba(74,158,255,.11)}.ic-e{background:rgba(184,127,255,.11)}
+.ph-title{font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.tc-w{color:var(--warp2)}.tc-a{color:var(--weft2)}.tc-c{color:var(--blue)}.tc-e{color:var(--purple)}
+.ph-badge{margin-left:auto;font-size:9px;letter-spacing:.1em;padding:2px 8px;border-radius:20px;background:var(--s3);color:var(--t3);border:1px solid var(--b1)}
+.pb{padding:13px 15px}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px}
+.tbl thead th{text-align:left;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);padding:0 4px 6px;border-bottom:1px solid var(--b1)}
+.tbl tbody td{padding:4px 3px;border-bottom:1px solid var(--b1);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:none}
+
+/* badge alt satır */
+.cv-row td{padding:1px 4px 5px;border-bottom:1px solid var(--b1)}
+.cv-wrap{display:flex;gap:4px;flex-wrap:wrap}
+.cv{font-size:9px;padding:2px 6px;border-radius:3px;white-space:nowrap;font-family:var(--mono)}
+.cv-d {background:rgba(232,147,58,.13);color:var(--warp2);border:1px solid rgba(232,147,58,.25)}
+.cv-dt{background:rgba(58,232,160,.10);color:var(--weft2);border:1px solid rgba(58,232,160,.22)}
+.cv-t {background:rgba(74,158,255,.10);color:var(--blue); border:1px solid rgba(74,158,255,.22)}
+.cv-ne{background:rgba(184,127,255,.10);color:var(--purple);border:1px solid rgba(184,127,255,.22)}
+
+/* ── INPUTS ── */
+input,select,textarea{
+  background:var(--inp-bg);border:1px solid var(--inp-border);border-radius:var(--r);
+  color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 7px;
+  outline:none;width:100%;transition:border-color .15s,background .15s;-webkit-appearance:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--blue);background:var(--inp-focus-bg)}
+input[type=number]{text-align:right;-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+select option{background:var(--s3)}
+textarea{resize:vertical;min-height:56px}
+
+/* ── PARAMS ── */
+.pg4{display:grid;grid-template-columns:repeat(4,1fr);gap:7px 10px;margin-top:11px}
+@media(max-width:540px){.pg4{grid-template-columns:1fr 1fr}}
+.field{display:flex;flex-direction:column;gap:3px}
+.fl{font-size:9px;font-weight:600;letter-spacing:.11em;color:var(--t3);text-transform:uppercase;white-space:nowrap}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:6px 13px;border-radius:var(--r);border:1px solid transparent;font-family:var(--mono);font-size:11px;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn-w{background:var(--warp-g);color:var(--warp2);border-color:rgba(232,147,58,.2)}
+.btn-w:hover{background:rgba(232,147,58,.18);border-color:var(--warp)}
+.btn-a{background:var(--weft-g);color:var(--weft2);border-color:rgba(58,232,160,.18)}
+.btn-a:hover{background:rgba(58,232,160,.18);border-color:var(--weft)}
+.btn-e{background:var(--purple-g);color:var(--purple);border-color:rgba(184,127,255,.2)}
+.btn-e:hover{background:rgba(184,127,255,.18);border-color:var(--purple)}
+.btn-del{background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;padding:3px 7px;border-radius:4px;transition:color .12s,background .12s;line-height:1}
+.btn-del:hover{color:var(--red);background:rgba(255,80,80,.1)}
+.btn-calc{background:linear-gradient(135deg,#4a9eff,#7ac0ff);color:#060810;font-family:var(--sans);font-weight:700;font-size:13px;padding:10px 26px;border-radius:8px;border:none;letter-spacing:.03em;box-shadow:0 4px 20px rgba(74,158,255,.28);cursor:pointer}
+.btn-calc:hover{opacity:.88;transform:translateY(-1px)}
+.btn-sec{background:var(--s2);color:var(--t2);border:1px solid var(--b1);font-family:var(--sans);font-size:12px;padding:8px 16px;border-radius:var(--r);cursor:pointer}
+.btn-sec:hover{background:var(--s3);color:var(--text)}
+.btn-wa{background:#1da851;color:#fff;font-family:var(--sans);font-weight:700;font-size:12px;padding:10px;border-radius:var(--r);border:none;width:100%;margin-top:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-wa:hover{background:#17923f}
+
+.divl{height:1px;background:linear-gradient(90deg,var(--b1),transparent);margin:11px 0}
+
+/* ── FİŞ TOGGLE (görsel switch) ── */
+.fis-opts{display:flex;flex-direction:column;gap:8px;margin-top:9px}
+.tog-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tog-label{font-size:11px;color:var(--t2)}
+.tog{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0;position:absolute}
+.tog-track{
+  position:absolute;inset:0;border-radius:20px;
+  background:var(--s3);border:1px solid var(--b2);
+  transition:background .2s,border-color .2s;cursor:pointer;
+}
+.tog input:checked + .tog-track{background:var(--blue);border-color:var(--blue)}
+.tog-thumb{
+  position:absolute;top:3px;left:3px;
+  width:12px;height:12px;border-radius:50%;
+  background:#fff;transition:transform .2s;pointer-events:none;
+}
+.tog input:checked ~ .tog-thumb{transform:translateX(16px)}
+
+/* ── RESULT ── */
+.res-panel{background:var(--s1);border:1px solid var(--b1);border-radius:10px;overflow:hidden;margin-top:12px;animation:fadeUp .3s ease;box-shadow:var(--shadow)}
+.res-top{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--b1)}
+@media(max-width:680px){.res-top{grid-template-columns:1fr 1fr}}
+.rc{padding:16px 18px;border-right:1px solid var(--b1)}
+.rc:last-child{border-right:none}
+.rc-lbl{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:5px}
+.rc-val{font-family:var(--sans);font-size:19px;font-weight:700}
+.rc-val.big{font-size:25px;color:var(--green)}
+.rc-val.blue{color:var(--blue);font-size:21px}
+.rc-sub{font-size:10px;color:var(--t3);margin-top:2px}
+
+.needs-wrap{background:var(--s2);border-top:1px solid var(--b1);padding:14px 18px}
+.needs-hd{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t2);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.needs-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+@media(max-width:540px){.needs-grid{grid-template-columns:1fr}}
+.needs-box{background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:10px 13px}
+.nb-title{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px}
+.nb-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px dashed var(--b1);font-size:11px;gap:8px}
+.nb-row:last-child{border-bottom:none}
+.nb-name{color:var(--t2);flex:1;font-size:10.5px}
+.nb-kg{font-weight:600;white-space:nowrap}
+.nb-kg.w{color:var(--warp2)}.nb-kg.a{color:var(--weft2)}
+
+.bkd{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--b1)}
+@media(max-width:560px){.bkd{grid-template-columns:1fr}}
+.bkd-col{padding:12px 18px}
+.bkd-col:first-child{border-right:1px solid var(--b1)}
+.bk-row{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:4px 0;border-bottom:1px dashed var(--b1);gap:10px}
+.bk-row:last-child{border-bottom:none}
+.bk-lbl{color:var(--t2)}
+.bk-val{font-weight:600}
+.bk-warp{color:var(--warp2)}.bk-weft{color:var(--weft2)}.bk-work{color:var(--blue)}.bk-extra{color:var(--purple)}.bk-total{color:var(--green);font-size:13px}
+
+/* ── MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(4,6,12,.88);backdrop-filter:blur(10px);z-index:500;align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex}
+.modal-box{
+  background:#fafafa;color:#111;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;
+  border-radius:6px;padding:30px 28px;font-family:var(--mono);font-size:11px;
+  box-shadow:0 30px 80px rgba(0,0,0,.7);animation:fadeUp .2s ease;
+}
+.fis-logo{font-family:var(--sans);font-weight:900;font-size:22px;letter-spacing:4px;text-align:center;color:#111}
+.fis-tag{text-align:center;font-size:9px;letter-spacing:2px;font-weight:700;margin-top:3px;color:#555}
+.fis-hl{border:none;border-top:2px solid #111;margin:14px 0}
+.fis-hl2{border:none;border-top:1px dashed #bbb;margin:8px 0}
+.fis-st{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;text-decoration:underline;margin:10px 0 5px;color:#222}
+.fis-row{display:flex;justify-content:space-between;align-items:flex-start;padding:3px 0;font-size:11px;line-height:1.4;gap:8px}
+.fis-row span:first-child{color:#444}
+.fis-row span:last-child{font-weight:700;color:#111;white-space:nowrap}
+.fis-total{background:#111;color:#fff;padding:12px 14px;border-radius:3px;margin-top:12px}
+.fis-total .fis-row{font-size:17px;font-weight:900}
+.fis-total .fis-row span:first-child{color:#aaa}
+.fis-total .fis-row span:last-child{color:#fff}
+.fis-footer{text-align:center;font-size:9px;color:#888;margin-top:18px;border-top:1px dashed #ddd;padding-top:10px}
+.fis-prod-hd{display:flex;justify-content:space-between;font-size:9px;font-weight:800;padding:4px 0;border-bottom:1px solid #ddd;color:#333;text-transform:uppercase;letter-spacing:.08em}
+.fis-prod-row{display:flex;justify-content:space-between;font-size:10px;padding:4px 0;border-bottom:1px dashed #eee;gap:8px;line-height:1.5}
+.fis-prod-row span:last-child{font-weight:700;white-space:nowrap}
+.modal-close-btn{width:100%;margin-top:8px;padding:9px;background:#ebebeb;border:1px solid #d5d5d5;border-radius:4px;font-family:var(--mono);font-weight:700;cursor:pointer;font-size:11px;letter-spacing:.06em}
+.modal-close-btn:hover{background:#ddd}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:4px}
+<style>
+  /* ── EMBEDDED MODE ADJUSTMENTS ── */
+  html.embedded-is { scroll-behavior: auto !important; }
+  body.embedded { background: transparent !important; min-height: auto !important; margin: 0 !important; overflow-y: auto !important; }
+  body.embedded::before { display: none !important; }
+  body.embedded .topbar { display: none !important; }
+  body.embedded .wrap { max-width: none !important; padding: 20px !important; margin: 0 !important; }
+</style>
+<script>
+  if (window.self !== window.top) {
+    document.documentElement.classList.add('embedded-is');
+    window.addEventListener('DOMContentLoaded', () => {
+      document.body.classList.add('embedded');
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+    });
+  }
+</script>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+
+
+<div class="wrap">
+  <div class="two-col">
+
+    <!-- ÇÖZGÜ -->
+    <div class="panel" style="animation-delay:.04s">
+      <div class="ph"><div class="ph-ico ic-w">🧵</div><span class="ph-title tc-w">Çözgü İplikleri</span><span class="ph-badge">WARP</span></div>
+      <div class="pb">
+        <table class="tbl">
+          <thead><tr>
+            <th>İplik Adı</th><th>No</th><th>Birim</th>
+            <th title="Büküm/Kat">Kat</th>
+            <th title="Rapordaki tel adedi">Rapor</th>
+            <th>$/kg</th><th style="width:24px"></th>
+          </tr></thead>
+          <tbody id="warp-body"></tbody>
+        </table>
+        <button class="btn btn-w" onclick="addRow('warp')">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>+ Çözgü Ekle
+        </button>
+        <div class="divl"></div>
+        <div class="pg4">
+          <div class="field"><label class="fl">Tarak No</label><input type="number" id="reed-no" value="24" min="1" step="0.5"></div>
+          <div class="field"><label class="fl">Diş/Tel</label><input type="number" id="reed-dent" value="2" min="1" max="12"></div>
+          <div class="field"><label class="fl">Tarak Eni (cm)</label><input type="number" id="warp-width" value="170" min="10"></div>
+          <div class="field"><label class="fl">Fire (%)</label><input type="number" id="warp-waste" value="3" min="0" max="40" step="0.1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ATKI -->
+    <div class="panel" style="animation-delay:.08s">
+      <div class="ph"><div class="ph-ico ic-a">🪡</div><span class="ph-title tc-a">Atkı İplikleri</span><span class="ph-badge">WEFT</span></div>
+      <div class="pb">
+        <table class="tbl">
+          <thead><tr>
+            <th>İplik Adı</th><th>No</th><th>Birim</th>
+            <th>Kat</th><th>Rapor</th><th>$/kg</th><th style="width:24px"></th>
+          </tr></thead>
+          <tbody id="weft-body"></tbody>
+        </table>
+        <button class="btn btn-a" onclick="addRow('weft')">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>+ Atkı Ekle
+        </button>
+        <div class="divl"></div>
+        <div class="pg4">
+          <div class="field"><label class="fl">Atkı Sıklığı (/cm)</label><input type="number" id="weft-dens" value="0" min="1" step="0.5"></div>
+          <div class="field"><label class="fl">Atkı Eni (cm)</label><input type="number" id="weft-width" value="170" min="10"></div>
+          <div class="field"><label class="fl">İşçilik ($/atkı)</label><input type="number" id="weave-price" value="0.015" min="0" step="0.001"></div>
+          <div class="field"><label class="fl">Fire (%)</label><input type="number" id="weft-waste" value="5" min="0" max="40" step="0.1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+
+    <!-- KUMAŞ DETAY -->
+    <div class="panel" style="animation-delay:.12s">
+      <div class="ph"><div class="ph-ico ic-c">📋</div><span class="ph-title tc-c">Kumaş Detayları & Notlar</span></div>
+      <div class="pb">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px">
+          <div class="field"><label class="fl">Müşteri / Proje</label><input type="text" id="cust-name" placeholder="Müşteri , Kalite adı…"></div>
+          <div class="field"><label class="fl">Örgü / Armür</label><input type="text" id="weave-type" value="Bez Ayağı"></div>
+        </div>
+        <div class="field" style="margin-top:9px">
+          <label class="fl">Notlar / Açıklama</label>
+          <textarea id="app-notes" placeholder="Teknik notlar,iplik fiyatlari,termine dair detaylar…"></textarea>
+        </div>
+        <!-- FİŞ OPSİYONLARI — görsel toggle -->
+        <div class="fis-opts">
+          <div class="tog-row">
+            <span class="tog-label">Fişte notları göster</span>
+            <label class="tog">
+              <input type="checkbox" id="show-notes-on-fis" checked>
+              <div class="tog-track"></div>
+              <div class="tog-thumb"></div>
+            </label>
+          </div>
+          <div class="tog-row">
+            <span class="tog-label">Fişte üretim planını göster</span>
+            <label class="tog">
+              <input type="checkbox" id="show-prod-on-fis" checked>
+              <div class="tog-track"></div>
+              <div class="tog-thumb"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EK GİDERLER -->
+    <div class="panel" style="animation-delay:.15s">
+      <div class="ph"><div class="ph-ico ic-e">➕</div><span class="ph-title tc-e">Ek Giderler</span><span class="ph-badge">$/metre</span></div>
+      <div class="pb">
+        <table class="tbl">
+          <thead><tr><th>Açıklama</th><th>Tutar ($)</th><th style="width:24px"></th></tr></thead>
+          <tbody id="extra-body"></tbody>
+        </table>
+        <button class="btn btn-e" onclick="addExtraRow()">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>+ Gider Ekle
+        </button>
+        <p style="font-size:10px;color:var(--t3);margin-top:9px;line-height:1.6">
+          Çözgü hazırlama, devere işçiliği, boyama, apre vb. sabit $/metre olarak eklenir.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÜRETİM & HESAPLA -->
+  <div class="panel" style="animation-delay:.18s">
+    <div class="ph"><div class="ph-ico ic-c">🏭</div><span class="ph-title" style="color:var(--text)">Üretim Planlama & Kur</span></div>
+    <div class="pb">
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="width:160px">
+          <label class="fl">Üretilecek Miktar (m)</label>
+          <input type="number" id="target-m" value="1000" min="1" oninput="calculate()">
+        </div>
+        <div class="field" style="width:160px">
+          <label class="fl">USD/TRY Kuru</label>
+          <input type="number" id="fx" value="34.20" step="0.01" min="1">
+        </div>
+        <div id="kur-status" style="align-self:flex-end;margin-bottom:2px;font-size:10px;color:var(--t3);padding:5px 10px;background:var(--s3);border:1px solid var(--b1);border-radius:20px;white-space:nowrap">Kur yükleniyor…</div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <button class="btn btn-sec" onclick="openFis()">📄 Fiş Oluştur</button>
+          <button class="btn btn-calc" onclick="calculate()">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 6.5h6M6.5 3.5v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            HESAPLA VE ANALİZ ET
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SONUÇ -->
+  <div id="result" class="res-panel" style="display:none">
+    <div class="ph" style="background:rgba(58,232,160,.05)">
+      <div class="ph-ico ic-a">✅</div>
+      <span class="ph-title" style="color:var(--green)">Hesaplama Sonucu</span>
+      <span class="ph-badge" id="res-ts" style="color:var(--green);border-color:rgba(58,232,160,.2)"></span>
+    </div>
+    <div class="res-top">
+      <div class="rc">
+        <div class="rc-lbl">Toplam Çözgü Teli</div>
+        <div class="rc-val" id="r-tel" style="color:var(--warp2)">—</div>
+      </div>
+      <div class="rc">
+        <div class="rc-lbl">Ham Gramaj (g/m)</div>
+        <div class="rc-val" id="r-gr">—</div>
+        <div class="rc-sub">çözgü + atkı</div>
+      </div>
+      <div class="rc">
+        <div class="rc-lbl">Birim Fiyat ($/m)</div>
+        <div class="rc-val big" id="r-usd">—</div>
+      </div>
+      <div class="rc">
+        <div class="rc-lbl">Birim Fiyat (TL/m)</div>
+        <div class="rc-val blue" id="r-tl">—</div>
+        <div class="rc-sub" id="r-kur-note"></div>
+      </div>
+    </div>
+
+    <div class="needs-wrap">
+      <div class="needs-hd">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x=".5" y=".5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M3.5 6.5h6M6.5 3.5v6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span id="target-title">1000</span>&nbsp;Metre İçin İplik İhtiyacı&nbsp;<span style="color:var(--t3)">(Fire Dahil)</span>
+      </div>
+      <div class="needs-grid">
+        <div class="needs-box">
+          <div class="nb-title" style="color:var(--warp2)">🧵 Çözgü</div>
+          <div id="warp-needs"></div>
+        </div>
+        <div class="needs-box">
+          <div class="nb-title" style="color:var(--weft2)">🪡 Atkı</div>
+          <div id="weft-needs"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bkd">
+      <div class="bkd-col">
+        <div class="bk-row"><span class="bk-lbl">Çözgü İplik Maliyeti</span><span class="bk-val bk-warp" id="b-warp">—</span></div>
+        <div class="bk-row"><span class="bk-lbl">Atkı İplik Maliyeti</span><span class="bk-val bk-weft" id="b-weft">—</span></div>
+      </div>
+      <div class="bkd-col">
+        <div class="bk-row"><span class="bk-lbl">Dokuma İşçilik</span><span class="bk-val bk-work" id="b-work">—</span></div>
+        <div class="bk-row"><span class="bk-lbl">Toplam Ek Gider</span><span class="bk-val bk-extra" id="b-extra">—</span></div>
+        <div class="bk-row" style="border-top:1px solid var(--b2);margin-top:6px;padding-top:8px">
+          <span class="bk-lbl" style="color:var(--text);font-weight:700">TOPLAM / m</span>
+          <span class="bk-val bk-total" id="b-total">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ÜRÜN OLARAK KAYDET (DokumaQC Entegrasyonu) -->
+    <div style="background:var(--s2);border-top:1px solid var(--b1);padding:16px 18px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+      <div style="flex:1;min-width:200px">
+        <label class="fl" style="margin-bottom:4px;display:block">Ürün (Kalite) Kodu</label>
+        <input type="text" id="save-prod-code" placeholder="Örn: KL-1001" style="background:var(--s1)">
+      </div>
+      <div style="flex:2;min-width:200px">
+        <label class="fl" style="margin-bottom:4px;display:block">Ürün (Kalite) Adı</label>
+        <input type="text" id="save-prod-name" placeholder="Örn: 20/1 Pamuk Bez Ayağı" style="background:var(--s1)">
+      </div>
+      <div>
+        <button class="btn-calc" style="background:linear-gradient(135deg,var(--weft2),var(--weft));box-shadow:0 4px 20px rgba(58,232,160,.28);height:32px;display:flex;align-items:center;padding:0 20px" onclick="saveAsProduct()" id="btn-save-prod">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          ÜRÜNLERE KAYDET
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<!-- ══ FİŞ MODAL ══ -->
+<div class="modal-bg" id="modal" onclick="closeFis()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="fis-logo"><?php echo getSetting('company_name', 'HENTEKSTİL'); ?></div>
+    <div class="fis-tag">TEKNİK MALİYET &amp; TEKLİF FİŞİ</div>
+    <hr class="fis-hl">
+    <div id="fis-body"></div>
+    <button class="btn-wa" onclick="sendWhatsApp()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M12.5 2.5A6.5 6.5 0 1 0 7 13.5a6.48 6.48 0 0 0 3.5-1.02L13.5 13l-.98-2.99A6.48 6.48 0 0 0 12.5 2.5Z" stroke="currentColor" stroke-width="1.3"/></svg>
+      WhatsApp ile Paylaş
+    </button>
+    <button class="modal-close-btn" onclick="closeFis()">KAPAT</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  TEMA
+// ══════════════════════════════════════════════════
+const ANALIZ_THEMES = ['dark','ipex','emerald','purple','sunset','midnight','carbon','earth','cyber','neon','ocean','forest','gold','arctic','sand','mint','rose','light'];
+const LIGHT_THEMES = ['light','arctic','sand','mint','rose'];
+
+function setAnalizTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const isLight = LIGHT_THEMES.includes(theme);
+  const btn = document.getElementById('theme-icon');
+  if(btn) btn.textContent = isLight ? '🌙' : '☀️';
+  const names = {dark:'Koyu',ipex:'IPEX Mavi',emerald:'Zümrüt',purple:'Gece Moru',sunset:'Gün Batımı',midnight:'Lacivert Gece',carbon:'Karbon',earth:'Toprak',cyber:'Cyberpunk',neon:'Neon Nights',ocean:'Okyanus',forest:'Orman',gold:'Altın',arctic:'Arktik',sand:'Kumsal',mint:'Nane',rose:'Gül Kurusu',light:'Açık'};
+  const lbl = document.getElementById('theme-lbl');
+  if(lbl) lbl.textContent = (names[theme] || theme) + ' Tema';
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const idx = ANALIZ_THEMES.indexOf(current);
+  const next = ANALIZ_THEMES[(idx + 1) % ANALIZ_THEMES.length];
+  setAnalizTheme(next);
+}
+
+// postMessage listener - ana uygulamadan tema değişimi
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'theme-change') {
+    setAnalizTheme(e.data.theme);
+  }
+});
+
+// ══════════════════════════════════════════════════
+//  NUMARA → TEX  (orijinal mantık)
+// ══════════════════════════════════════════════════
+function getTex(n, u) {
+  n = parseFloat(n) || 0;
+  if (u === 'd')    return n / 9;
+  if (u === 'ne')   return 590.5 / n;
+  if (u === 'nm')   return 1000  / n;
+  if (u === 'dtex') return n / 10;
+  if (u === 'tex')  return n;
+  return n / 9;
+}
+
+// dönüşüm badge HTML
+function cvHtml(no, unit) {
+  const t = getTex(no, unit);
+  if (!t || !no) return '';
+  return `<div class="cv-wrap">
+    <span class="cv cv-d">${(t*9).toFixed(1)} Dn</span>
+    <span class="cv cv-dt">${(t*10).toFixed(1)} dtex</span>
+    <span class="cv cv-t">${t.toFixed(2)} tex</span>
+    <span class="cv cv-ne">Ne ${(590.5/t).toFixed(1)}</span>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════
+//  SATIRLAR
+// ══════════════════════════════════════════════════
+let rowId = 0;
+
+function addRow(type) {
+  const b  = document.getElementById(type + '-body');
+  const id = ++rowId;
+
+  // ana satır
+  const tr = document.createElement('tr');
+  tr.id = `tr-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" class="name" value="${type==='warp'?'Çözgü':'Atkı'}" style="min-width:70px"></td>
+    <td><input type="number" class="n" value="20" min="0.1" step="0.5" style="width:50px"
+        oninput="updateCv(${id})" onchange="updateCv(${id})"></td>
+    <td><select class="u" style="width:82px" onchange="updateCv(${id})">
+      <option value="d">Dny</option>
+      <option value="ne">Ne (ingiliz)</option>
+      <option value="nm">Nm (metrik)</option>
+      <option value="dtex">Dtex</option>
+      <option value="tex">Tex</option>
+    </select></td>
+    <td><input type="number" class="k" value="1" min="1" max="20" style="width:36px"></td>
+    <td><input type="number" class="r" value="1" min="0" step="0.5" style="width:46px"></td>
+    <td><input type="number" class="p" value="6.50" min="0" step="0.01" style="width:58px"></td>
+    <td><button class="btn-del" onclick="removeRow(${id})" title="Sil">×</button></td>
+  `;
+  b.appendChild(tr);
+
+  // dönüşüm satırı
+  const cvTr = document.createElement('tr');
+  cvTr.id = `cv-${id}`;
+  cvTr.className = 'cv-row';
+  cvTr.innerHTML = `<td colspan="7"><div id="cvd-${id}"></div></td>`;
+  b.appendChild(cvTr);
+
+  updateCv(id);
+}
+
+function removeRow(id) {
+  const tr   = document.getElementById(`tr-${id}`);
+  const cvTr = document.getElementById(`cv-${id}`);
+  if (tr)   tr.remove();
+  if (cvTr) cvTr.remove();
+  calculate();
+}
+
+function fillRow(type, data) {
+  const b = document.getElementById(type + '-body');
+  const id = ++rowId;
+  const unitMap = { 'Dny':'d', 'Ne (ingiliz)':'ne', 'Ne':'ne', 'Nm (metrik)':'nm', 'Nm':'nm', 'Dtex':'dtex', 'Tex':'tex' };
+  const unitVal = unitMap[data.unitTxt] || 'd';
+
+  const tr = document.createElement('tr');
+  tr.id = `tr-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" class="name" value="${(data.name || '').replace(/"/g, '&quot;')}" style="min-width:70px"></td>
+    <td><input type="number" class="n" value="${data.no || '20'}" min="0.1" step="0.5" style="width:50px"
+        oninput="updateCv(${id})" onchange="updateCv(${id})"></td>
+    <td><select class="u" style="width:82px" onchange="updateCv(${id})">
+      <option value="d" ${unitVal==='d'?'selected':''}>Dny</option>
+      <option value="ne" ${unitVal==='ne'?'selected':''}>Ne (ingiliz)</option>
+      <option value="nm" ${unitVal==='nm'?'selected':''}>Nm (metrik)</option>
+      <option value="dtex" ${unitVal==='dtex'?'selected':''}>Dtex</option>
+      <option value="tex" ${unitVal==='tex'?'selected':''}>Tex</option>
+    </select></td>
+    <td><input type="number" class="k" value="${data.kat || '1'}" min="1" max="20" style="width:36px"></td>
+    <td><input type="number" class="r" value="${data.repeat || '1'}" min="0" step="0.5" style="width:46px"></td>
+    <td><input type="number" class="p" value="6.50" min="0" step="0.01" style="width:58px"></td>
+    <td><button class="btn-del" onclick="removeRow(${id})" title="Sil">×</button></td>
+  `;
+  b.appendChild(tr);
+
+  const cvTr = document.createElement('tr');
+  cvTr.id = `cv-${id}`;
+  cvTr.className = 'cv-row';
+  cvTr.innerHTML = `<td colspan="7"><div id="cvd-${id}"></div></td>`;
+  b.appendChild(cvTr);
+
+  updateCv(id);
+}
+
+function updateCv(id) {
+  const tr = document.getElementById(`tr-${id}`);
+  if (!tr) return;
+  const no   = tr.querySelector('.n')?.value;
+  const unit = tr.querySelector('.u')?.value;
+  const el   = document.getElementById(`cvd-${id}`);
+  if (el) {
+    el.innerHTML = cvHtml(no, unit);
+    calculate();
+  }
+}
+
+function addExtraRow() {
+  const b  = document.getElementById('extra-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" class="e-name" value="Hazırlık / Devere" style="min-width:150px"></td>
+    <td><input type="number" class="e-val" value="0.10" min="0" step="0.001" style="width:90px" oninput="calculate()"></td>
+    <td><button class="btn-del" onclick="this.closest('tr').remove(); calculate();" title="Sil">×</button></td>
+  `;
+  b.appendChild(tr);
+}
+
+// ══════════════════════════════════════════════════
+//  KUR ÇEKİMİ
+// ══════════════════════════════════════════════════
+async function fetchKur() {
+  const dot    = document.getElementById('kur-dot');
+  const status = document.getElementById('kur-status');
+  const hkur   = document.getElementById('header-kur');
+
+  const setVal = (val) => {
+    document.getElementById('fx').value = val.toFixed(4);
+    hkur.textContent = val.toFixed(2) + ' ₺';
+    dot.classList.add('live');
+    status.textContent = '✓ Kur güncel · ' + new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+    status.style.color = 'var(--green)';
+  };
+
+  // 1. TCMB (allorigins proxy)
+  try {
+    const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://www.tcmb.gov.tr/kurlar/today.xml');
+    const res   = await fetch(proxy, { signal: AbortSignal.timeout(7000) });
+    const data  = await res.json();
+    const xml   = new DOMParser().parseFromString(data.contents, 'text/xml');
+    const usdEl = xml.querySelector('Currency[Kod="USD"] ForexSelling');
+    if (!usdEl) throw new Error('no USD');
+    setVal(parseFloat(usdEl.textContent.replace(',', '.')));
+    return;
+  } catch(_) {}
+
+  // 2. exchangerate-api (ücretsiz, CORS açık)
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(6000) });
+    const j = await r.json();
+    if (j.rates && j.rates.TRY) { setVal(j.rates.TRY); return; }
+  } catch(_) {}
+
+  // başarısız
+  dot.classList.add('err');
+  hkur.textContent = document.getElementById('fx').value + ' ₺';
+  status.textContent = '⚠ Kur alınamadı — manuel giriniz';
+  status.style.color = 'var(--warp)';
+}
+
+// ══════════════════════════════════════════════════
+//  HESAPLAMA — orijinal mantık
+// ══════════════════════════════════════════════════
+let lastCalculated = null;
+
+function calculate() {
+  const rNo      = parseFloat(document.getElementById('reed-no').value)    || 0;
+  const rD       = parseFloat(document.getElementById('reed-dent').value)  || 0;
+  const en       = parseFloat(document.getElementById('warp-width').value) || 0;
+  const wWaste   = 1 + (parseFloat(document.getElementById('warp-waste').value) || 0) / 100;
+  const fx       = parseFloat(document.getElementById('fx').value)          || 34.20;
+  const targetM  = parseFloat(document.getElementById('target-m').value)    || 1000;
+  const weaveType= document.getElementById('weave-type').value;
+  const custName = document.getElementById('cust-name').value;
+  const notes    = document.getElementById('app-notes').value;
+  const aDens    = parseFloat(document.getElementById('weft-dens').value)  || 0;
+  const aEn      = parseFloat(document.getElementById('weft-width').value) || 0;
+  const aWaste   = 1 + (parseFloat(document.getElementById('weft-waste').value) || 0) / 100;
+
+  const totalTel = (rNo * rD) * en;
+
+  // ── ÇÖZGÜ
+  let totalWarpRepeat = 0;
+  document.querySelectorAll('#warp-body tr.cv-row').forEach(() => {});   // skip cv rows
+  document.querySelectorAll('#warp-body tr[id^="tr-"]').forEach(tr => {
+    totalWarpRepeat += parseFloat(tr.querySelector('.r')?.value) || 0;
+  });
+
+  let cGrTotal = 0, cCostTotal = 0;
+  const warpList = [], warpKgList = [];
+
+  document.querySelectorAll('#warp-body tr[id^="tr-"]').forEach(tr => {
+    const name   = tr.querySelector('.name')?.value || '';
+    const no     = tr.querySelector('.n')?.value    || 0;
+    const unitSel= tr.querySelector('.u');
+    const unitVal= unitSel ? unitSel.value : 'd';
+    const unitTxt= unitSel ? unitSel.options[unitSel.selectedIndex].text : 'Dny';
+    const kat    = parseFloat(tr.querySelector('.k')?.value) || 1;
+    const repeat = parseFloat(tr.querySelector('.r')?.value) || 0;
+    const price  = parseFloat(tr.querySelector('.p')?.value) || 0;
+
+    const ratio     = totalWarpRepeat > 0 ? (repeat / totalWarpRepeat) : 0;
+    const actualTel = Math.round(totalTel * ratio);
+    const tex       = getTex(no, unitVal) * kat;
+    const weightPerM= (actualTel * tex) / 1000 * wWaste;
+
+    cGrTotal   += weightPerM;
+    cCostTotal += (weightPerM / 1000) * price;
+    warpList.push(`${no}/${kat} ${unitTxt} ${name}`);
+    warpKgList.push({ name, no, kat, unitTxt, repeat, kg: (weightPerM * targetM) / 1000, gr: weightPerM });
+  });
+
+  // ── ATKI
+  let totalWeftRepeat = 0;
+  document.querySelectorAll('#weft-body tr[id^="tr-"]').forEach(tr => {
+    totalWeftRepeat += parseFloat(tr.querySelector('.r')?.value) || 0;
+  });
+
+  let aGrTotal = 0, aCostTotal = 0;
+  const weftList = [], weftKgList = [];
+
+  document.querySelectorAll('#weft-body tr[id^="tr-"]').forEach(tr => {
+    const name   = tr.querySelector('.name')?.value || '';
+    const no     = tr.querySelector('.n')?.value    || 0;
+    const unitSel= tr.querySelector('.u');
+    const unitVal= unitSel ? unitSel.value : 'd';
+    const unitTxt= unitSel ? unitSel.options[unitSel.selectedIndex].text : 'Dny';
+    const kat    = parseFloat(tr.querySelector('.k')?.value) || 1;
+    const repeat = parseFloat(tr.querySelector('.r')?.value) || 0;
+    const price  = parseFloat(tr.querySelector('.p')?.value) || 0;
+
+    const ratio     = totalWeftRepeat > 0 ? (repeat / totalWeftRepeat) : 0;
+    const tex       = getTex(no, unitVal) * kat;
+    const weightPerM= ((aDens * ratio) * aEn * tex) / 1000 * aWaste;
+
+    aGrTotal   += weightPerM;
+    aCostTotal += (weightPerM / 1000) * price;
+    weftList.push(`${no}/${kat} ${unitTxt} ${name}`);
+    weftKgList.push({ name, no, kat, unitTxt, repeat, kg: (weightPerM * targetM) / 1000, gr: weightPerM });
+  });
+
+  // ── İŞÇİLİK & EK
+  const workCost = aDens * parseFloat(document.getElementById('weave-price').value || 0);
+  let extraTotal = 0;
+  document.querySelectorAll('#extra-body tr').forEach(tr => {
+    extraTotal += parseFloat(tr.querySelector('.e-val')?.value) || 0;
+  });
+
+  const totalUsd = cCostTotal + aCostTotal + workCost + extraTotal;
+  const totalTry = totalUsd * fx;
+
+  // ── EKRANA YAZ
+  const panel = document.getElementById('result');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior:'instant', block:'nearest' });
+
+  document.getElementById('res-ts').textContent    = new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('r-tel').textContent     = Math.round(totalTel).toLocaleString('tr-TR');
+  document.getElementById('r-gr').textContent      = Math.round(cGrTotal + aGrTotal) + ' g/m';
+  document.getElementById('r-usd').textContent     = '$' + totalUsd.toFixed(3);
+  document.getElementById('r-tl').textContent      = totalTry.toFixed(2) + ' ₺';
+  document.getElementById('r-kur-note').textContent= 'Kur: ' + fx.toFixed(2);
+  document.getElementById('b-warp').textContent    = '$' + cCostTotal.toFixed(3);
+  document.getElementById('b-weft').textContent    = '$' + aCostTotal.toFixed(3);
+  document.getElementById('b-work').textContent    = '$' + workCost.toFixed(3);
+  document.getElementById('b-extra').textContent   = '$' + extraTotal.toFixed(3);
+  document.getElementById('b-total').textContent   = '$' + totalUsd.toFixed(3);
+  document.getElementById('target-title').textContent = targetM.toLocaleString('tr-TR');
+
+  const makeNeedsHtml = (list, cls) => list.length
+    ? list.map(i => `<div class="nb-row">
+        <span class="nb-name">${i.name} <em style="color:var(--t3);font-size:10px">(${i.no}×${i.kat} ${i.unitTxt}, ${i.repeat} rap)</em></span>
+        <span class="nb-kg ${cls}">${i.kg.toFixed(2)} kg</span>
+      </div>`).join('')
+    : '<div style="color:var(--t3);font-size:11px">İplik eklenmedi</div>';
+
+  document.getElementById('warp-needs').innerHTML = makeNeedsHtml(warpKgList, 'w');
+  document.getElementById('weft-needs').innerHTML = makeNeedsHtml(weftKgList, 'a');
+
+  lastCalculated = {
+    totalTel, cGrTotal, aGrTotal, totalUsd, totalTry, fx,
+    cCostTotal, aCostTotal, workCost, extraTotal,
+    targetM, weaveType, custName, notes,
+    warpList, weftList, warpKgList, weftKgList,
+    reed: rNo, dent: rD, width: en, dens: aDens
+  };
+}
+
+// ══════════════════════════════════════════════════
+//  FİŞ  (TL satırı YOK)
+// ══════════════════════════════════════════════════
+function openFis() {
+  if (!lastCalculated) calculate();
+  const d = lastCalculated;
+  const showProd  = document.getElementById('show-prod-on-fis').checked;
+  const showNotes = document.getElementById('show-notes-on-fis').checked;
+
+  let html = '';
+  if (d.custName) html += `<div class="fis-row"><span>Müşteri / Proje:</span><span>${d.custName}</span></div>`;
+  html += `<div class="fis-row"><span>Örgü / Armür:</span><span>${d.weaveType}</span></div>`;
+  html += `<hr class="fis-hl2">`;
+  html += `<div class="fis-st">Teknik Detaylar</div>`;
+  html += `<div class="fis-row"><span>Tarak No / Diş:</span><span>${d.reed} / ${d.dent}</span></div>`;
+  html += `<div class="fis-row"><span>Kumaş Eni:</span><span>${d.width} cm</span></div>`;
+  html += `<div class="fis-row"><span>Toplam Çözgü Teli:</span><span>${Math.round(d.totalTel).toLocaleString('tr-TR')}</span></div>`;
+  html += `<div class="fis-row"><span>Atkı Sıklığı:</span><span>${d.dens} tel/cm</span></div>`;
+  html += `<div class="fis-row"><span>Ham Gramaj:</span><span>${Math.round(d.cGrTotal + d.aGrTotal)} g/m</span></div>`;
+
+  html += `<div class="fis-st">Kullanılan İplikler</div>`;
+  if (d.warpList.length) html += `<div style="font-size:10px;line-height:1.7;margin-bottom:4px"><strong>Çözgü:</strong> ${d.warpList.join(' · ')}</div>`;
+  if (d.weftList.length) html += `<div style="font-size:10px;line-height:1.7"><strong>Atkı:</strong> ${d.weftList.join(' · ')}</div>`;
+
+  if (showNotes && d.notes) {
+    html += `<div class="fis-st">Açıklamalar</div>`;
+    html += `<div style="font-size:10px;background:#f5f5f5;padding:8px 10px;border-radius:3px;white-space:pre-wrap;line-height:1.6">${d.notes}</div>`;
+  }
+
+  html += `<div class="fis-st">Maliyet Dökümü ($/m)</div>`;
+  html += `<div class="fis-row"><span>Çözgü İplik Maliyeti:</span><span>$${d.cCostTotal.toFixed(3)}</span></div>`;
+  html += `<div class="fis-row"><span>Atkı İplik Maliyeti:</span><span>$${d.aCostTotal.toFixed(3)}</span></div>`;
+  html += `<div class="fis-row"><span>Dokuma İşçilik:</span><span>$${d.workCost.toFixed(3)}</span></div>`;
+  if (d.extraTotal > 0)
+    html += `<div class="fis-row"><span>Toplam Ek Gider:</span><span>$${d.extraTotal.toFixed(3)}</span></div>`;
+
+  // TL SATIRI YOK — sadece USD
+  html += `<div class="fis-total"><div class="fis-row"><span>BİRİM FİYAT:</span><span>$${d.totalUsd.toFixed(3)}</span></div></div>`;
+
+  if (showProd) {
+    html += `<hr class="fis-hl2">`;
+    html += `<div class="fis-st">Üretim Planı — ${d.targetM.toLocaleString('tr-TR')} Metre</div>`;
+    html += `<div class="fis-prod-hd"><span>İplik / Özellik</span><span>Miktar (kg)</span></div>`;
+    d.warpKgList.forEach(i => {
+      html += `<div class="fis-prod-row"><span>${i.no}/${i.kat} ${i.unitTxt} ${i.name} (${i.repeat} tel/rap) · ${i.gr.toFixed(1)} g/m</span><span>${i.kg.toFixed(2)} kg</span></div>`;
+    });
+    d.weftKgList.forEach(i => {
+      html += `<div class="fis-prod-row"><span>${i.no}/${i.kat} ${i.unitTxt} ${i.name} (${i.repeat} atkı/rap) · ${i.gr.toFixed(1)} g/m</span><span>${i.kg.toFixed(2)} kg</span></div>`;
+    });
+  }
+
+  document.getElementById('fis-body').innerHTML = html;
+  document.getElementById('fis-date').textContent = new Date().toLocaleDateString('tr-TR');
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeFis() { document.getElementById('modal').classList.remove('open'); }
+
+function sendWhatsApp() {
+  const d = lastCalculated; if (!d) return;
+  let t = `*HENTEKS TEKNİK MALİYET FİŞİ*\n`;
+  if (d.custName) t += `Müşteri: ${d.custName}\n`;
+  t += `Örgü: ${d.weaveType} | En: ${d.width} cm | Sıklık: ${d.dens} atkı/cm\n`;
+  t += `Ham Gramaj: ${Math.round(d.cGrTotal+d.aGrTotal)} g/m\n`;
+  t += `─────────────────\n`;
+  t += `*BİRİM FİYAT: $${d.totalUsd.toFixed(3)}*\n`;
+  if (document.getElementById('show-prod-on-fis').checked) {
+    t += `─────────────────\n*${d.targetM} Metre İplik İhtiyacı:*\n`;
+    d.warpKgList.forEach(i => t += `• ${i.name}: ${i.kg.toFixed(2)} kg\n`);
+    d.weftKgList.forEach(i => t += `• ${i.name}: ${i.kg.toFixed(2)} kg\n`);
+  }
+  if (document.getElementById('show-notes-on-fis').checked && d.notes)
+    t += `─────────────────\nNot: ${d.notes}\n`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+}
+
+// ══════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════
+window.onload = () => {
+  const loadProd = window._loadedProduct;
+  if (loadProd) {
+    document.getElementById('save-prod-code').value = loadProd.code || '';
+    document.getElementById('save-prod-name').value = loadProd.name || '';
+    window._editingProductId = loadProd.id;
+
+    try {
+      const td = typeof loadProd.tech_details === 'string' ? JSON.parse(loadProd.tech_details) : (loadProd.tech_details || {});
+      if (td.warpKgList && td.warpKgList.length) {
+        document.getElementById('warp-body').innerHTML = '';
+        td.warpKgList.forEach(w => fillRow('warp', w));
+      } else {
+        addRow('warp');
+      }
+      if (td.weftKgList && td.weftKgList.length) {
+        document.getElementById('weft-body').innerHTML = '';
+        td.weftKgList.forEach(w => fillRow('weft', w));
+      } else {
+        addRow('weft');
+      }
+      addExtraRow();
+
+      if (td.reed) document.getElementById('reed-no').value = td.reed;
+      if (td.dent) document.getElementById('reed-dent').value = td.dent;
+      if (td.width) {
+        document.getElementById('warp-width').value = td.width;
+        document.getElementById('weft-width').value = td.width;
+      }
+      if (td.dens) document.getElementById('weft-dens').value = td.dens;
+      if (td.weaveType) document.getElementById('weave-type').value = td.weaveType;
+      if (td.notes) document.getElementById('app-notes').value = td.notes;
+      if (td.custName) document.getElementById('cust-name').value = td.custName;
+      if (td.cWaste) document.getElementById('warp-waste').value = ((td.cWaste - 1) * 100).toFixed(1);
+      if (td.aWaste) document.getElementById('weft-waste').value = ((td.aWaste - 1) * 100).toFixed(1);
+
+      setTimeout(() => calculate(), 100);
+    } catch (e) {
+      addRow('warp');
+      addRow('weft');
+      addExtraRow();
+    }
+  } else {
+    addRow('warp');
+    addRow('weft');
+    addExtraRow();
+  }
+
+  fetchKur();
+  setTimeout(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, 50);
+};
+// ══════════════════════════════════════════════════
+//  ÜRÜN KAYDET (APP ENTEGRASYONU)
+// ══════════════════════════════════════════════════
+async function saveAsProduct() {
+  if (!lastCalculated) {
+    alert("Önce hesaplama yapınız!");
+    return;
+  }
+  const code = document.getElementById('save-prod-code').value.trim();
+  const name = document.getElementById('save-prod-name').value.trim();
+  
+  if (!code || !name) {
+    alert("Lütfen ürün kodu ve adı giriniz.");
+    return;
+  }
+  
+  const btn = document.getElementById('btn-save-prod');
+  const orgHtml = btn.innerHTML;
+  btn.innerHTML = "Kaydediliyor...";
+  btn.disabled = true;
+
+  try {
+    const payload = new URLSearchParams();
+    
+    // Otomatik Kompozisyon Hesaplama
+    const matMap = {};
+    let totalKg = 0;
+    [...(lastCalculated.warpKgList || []), ...(lastCalculated.weftKgList || [])].forEach(i => {
+      let n = i.name.trim().toUpperCase();
+      // En çok bilinen iplik detay filtreleme (30/1 gibi sayıları çıkarma)
+      n = n.replace(/^[0-9\/]+\s*/, ''); 
+      if (!n) n = 'BİLİNMEYEN LİF';
+      if (!matMap[n]) matMap[n] = 0;
+      matMap[n] += i.kg;
+      totalKg += i.kg;
+    });
+
+    let compArr = [];
+    if (totalKg > 0) {
+      // Yüzdeye göre büyükten küçüğe sıralayalım
+      let sortedMats = Object.keys(matMap).sort((a,b) => matMap[b] - matMap[a]);
+      for (let n of sortedMats) {
+        let percent = Math.round((matMap[n] / totalKg) * 100);
+        if (percent > 0) compArr.push(`%${percent} ${n}`);
+      }
+    }
+    const autoComp = compArr.join(', ');
+
+    payload.append('action', 'products');
+    const editId = window._editingProductId || 0;
+    const lp = window._loadedProduct || {};
+    payload.append('id', editId);
+    payload.append('code', code);
+    payload.append('name', name);
+    payload.append('fabric_type_id', lp.fabric_type_id || '');
+    payload.append('unit', lp.unit || 'metre');
+    payload.append('supplier', lp.supplier || '');
+    payload.append('composition', autoComp);
+    payload.append('density', (lastCalculated.dens || lp.density || '').toString());
+    payload.append('notes', document.getElementById('app-notes').value);
+    payload.append('tech_details', JSON.stringify(lastCalculated));
+
+    // Try to hit API directly if served from the same domain
+    const response = await fetch('api.php', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-Token': '<?php echo $_SESSION['csrf_token'] ?? ''; ?>'
+      },
+      body: payload
+    });
+    
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    
+    // Attempt to notify parent window UI to show toast
+    if (window.parent && typeof window.parent.toast === 'function') {
+      window.parent.toast('Analiz başarıyla ürün olarak kaydedildi!', 'success');
+      // Otomatik olarak ürünler sayfasına yönlendir (Opsiyonel)
+      if(typeof window.parent.navigateTo === 'function') {
+         setTimeout(() => window.parent.navigateTo('products'), 1500);
+      }
+    } else {
+      alert("Başarıyla kaydedildi!");
+    }
+  } catch(e) {
+    alert("Hata: " + e.message);
+  } finally {
+    btn.innerHTML = orgHtml;
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
