@@ -1373,9 +1373,19 @@ function toggleOrderCalendar() {
   const calContainer = document.getElementById('calendarContainer');
   const tablePanel = document.getElementById('ordersTablePanel');
   const toggleBtn = document.getElementById('calendarToggleBtn');
-  
+
+  if (!calContainer || !tablePanel || !toggleBtn) {
+    toast('Takvim bileşeni bulunamadı', 'error');
+    return;
+  }
+
+  if (typeof FullCalendar === 'undefined') {
+    toast('FullCalendar kütüphanesi yüklenemedi, sayfayı yenileyin', 'error');
+    return;
+  }
+
   calendarVisible = !calendarVisible;
-  
+
   if (calendarVisible) {
     calContainer.style.display = 'block';
     tablePanel.style.display = 'none';
@@ -1394,46 +1404,57 @@ function toggleOrderCalendar() {
 
 function renderOrderCalendar() {
   const calendarEl = document.getElementById('ordersCalendar');
-  if (!calendarEl) return;
-  
+  if (!calendarEl) {
+    toast('Takvim alanı bulunamadı', 'error');
+    return;
+  }
+
   if (calendarInstance) {
     calendarInstance.destroy();
+    calendarInstance = null;
   }
-  
+
   const events = getOrdersForCalendar();
-  
-  calendarInstance = new FullCalendar.Calendar(calendarEl, {
-    initialView: 'dayGridMonth',
-    locale: 'tr',
-    headerToolbar: {
-      left: 'prev,next today',
-      center: 'title',
-      right: 'dayGridMonth,listWeek'
-    },
-    events: events,
-    eventClick: function(info) {
-      openOrderDetail(parseInt(info.event.id));
-    },
-    eventDidMount: function(info) {
-      info.el.title = info.event.extendedProps.tooltip;
-    },
-    height: 'auto',
-    dayMaxEvents: 3,
-    nowIndicator: true,
-    businessHours: {
-      daysOfWeek: [1, 2, 3, 4, 5],
-      startTime: '08:00',
-      endTime: '18:00'
-    },
-    buttonText: {
-      today: 'Bugün',
-      month: 'Ay',
-      week: 'Hafta',
-      list: 'Liste'
-    }
-  });
-  
-  calendarInstance.render();
+  if (!events.length) {
+    toast('Takvimde gösterilecek sipariş bulunamadı (termin/tarih bilgisi olan sipariş yok)', 'warning');
+  }
+
+  try {
+    calendarInstance = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'tr',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,listWeek'
+      },
+      events: events,
+      eventClick: function(info) {
+        openOrderDetail(parseInt(info.event.id));
+      },
+      eventDidMount: function(info) {
+        info.el.title = info.event.extendedProps.tooltip;
+      },
+      height: 'auto',
+      dayMaxEvents: 3,
+      nowIndicator: true,
+      businessHours: {
+        daysOfWeek: [1, 2, 3, 4, 5],
+        startTime: '08:00',
+        endTime: '18:00'
+      },
+      buttonText: {
+        today: 'Bugün',
+        month: 'Ay',
+        week: 'Hafta',
+        list: 'Liste'
+      }
+    });
+
+    calendarInstance.render();
+  } catch (e) {
+    toast('Takvim oluşturulurken hata: ' + e.message, 'error');
+  }
 }
 
 function getOrdersForCalendar() {
