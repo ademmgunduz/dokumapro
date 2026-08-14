@@ -74,6 +74,40 @@ function generateKartelaBarcode() {
     return null;
 }
 
+// İplik kod üretme (örn. IPK-0001, IPK-0002...)
+function generateYarnCode() {
+    $db = getDB();
+
+    $maxRetries = 5;
+    for ($i = 0; $i < $maxRetries; $i++) {
+        $db->exec('BEGIN TRANSACTION');
+        try {
+            $last = intval($db->querySingle("SELECT value FROM settings WHERE key = 'yarn_code_last'") ?: 0);
+            $new = $last + 1;
+            // Silinmiş (is_active=0) olsa bile kod UNIQUE kaldığı için kullanılan kodları atla
+            $exists = true;
+            $guard = 0;
+            while ($exists && $guard < 10000) {
+                $code = 'IPK-' . sprintf('%04d', $new);
+                $st = $db->prepare("SELECT COUNT(*) FROM yarns WHERE code = :c");
+                $st->bindValue(':c', $code);
+                $exists = intval($st->execute()->fetchArray(SQLITE3_NUM)[0]) > 0;
+                if ($exists) $new++;
+                $guard++;
+            }
+            $stmt = $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('yarn_code_last', :v)");
+            $stmt->bindValue(':v', $new, SQLITE3_INTEGER);
+            $stmt->execute();
+            $db->exec('COMMIT');
+            return 'IPK-' . sprintf('%04d', $new);
+        } catch (Exception $e) {
+            $db->exec('ROLLBACK');
+            if ($i === $maxRetries - 1) throw $e;
+        }
+    }
+    return null;
+}
+
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -2790,6 +2824,349 @@ switch ($action) {
                 $statusLabels[$row['status']] ?? $row['status'], $row['location'] ?? '',
                 $row['sample_count'], $row['send_date'] ?? '', $row['return_date'] ?? '',
                 $row['notes'] ?? '', $row['created_at']
+            ], ';');
+        }
+        fclose($output);
+        exit;
+
+    // ═══════════════════════════════════════
+    //  İPLİK STOK (Giriş/Çıkış Takibi)
+    // ═══════════════════════════════════════
+    case 'yarns':
+        requireLogin();
+        $db = getDB();
+
+        if ($method === 'GET') {
+            $search = $_GET['search'] ?? '';
+            $cins = $_GET['cins'] ?? '';
+
+            $where = "y.is_active = 1";
+            $params = [];
+            if ($search) {
+                $where .= " AND (y.code LIKE :s OR y.numara LIKE :s OR y.cins LIKE :s OR y.supplier LIKE :s)";
+                $params[':s'] = '%' . $search . '%';
+            }
+            if ($cins) { $where .= " AND y.cins = :c"; $params[':c'] = $cins; }
+
+            $sql = "SELECT y.*,
+                    COALESCE((SELECT SUM(CASE WHEN m.type = 'giris' THEN m.quantity ELSE -m.quantity END)
+                               FROM yarn_movements m WHERE m.yarn_id = y.id), 0) as current_stock,
+                    (SELECT COUNT(*) FROM yarn_movements m WHERE m.yarn_id = y.id) as movement_count
+                    FROM yarns y
+                    WHERE $where
+                    ORDER BY y.code ASC";
+            $stmt = $db->prepare($sql);
+            foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+            $result = $stmt->execute();
+            $rows = [];
+            while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
+            jsonResponse(['data' => $rows]);
+
+        } elseif ($method === 'POST') {
+            $editId = intval($_POST['id'] ?? 0);
+            $code = trim($_POST['code'] ?? '');
+
+            if ($editId > 0) {
+                $stmt = $db->prepare("UPDATE yarns SET code=:code, numara=:no, numara_type=:ntype, kat=:kat, cins=:cins, unit=:unit,
+                    supplier=:sup, unit_price=:up, currency=:cur, min_stock=:ms, notes=:notes,
+                    updated_at=datetime('now') WHERE id=:id");
+                $stmt->bindValue(':id', $editId, SQLITE3_INTEGER);
+            } else {
+                if (empty($code)) {
+                    $code = generateYarnCode();
+                    if (!$code) jsonResponse(['error' => 'İplik kodu üretilemedi'], 500);
+                }
+                $stmt = $db->prepare("INSERT INTO yarns (code, numara, numara_type, kat, cins, unit, supplier, unit_price, currency, min_stock, notes)
+                    VALUES (:code, :no, :ntype, :kat, :cins, :unit, :sup, :up, :cur, :ms, :notes)");
+            }
+
+            $stmt->bindValue(':code', sanitize($code));
+            $stmt->bindValue(':no', sanitize($_POST['numara'] ?? ''));
+            $stmt->bindValue(':ntype', sanitize($_POST['numara_type'] ?? 'nm'));
+            $stmt->bindValue(':kat', intval($_POST['kat'] ?? 1));
+            $stmt->bindValue(':cins', sanitize($_POST['cins'] ?? ''));
+            $stmt->bindValue(':unit', sanitize($_POST['unit'] ?? 'kg'));
+            $stmt->bindValue(':sup', sanitize($_POST['supplier'] ?? ''));
+            $stmt->bindValue(':up', floatval($_POST['unit_price'] ?? 0));
+            $stmt->bindValue(':cur', sanitize($_POST['currency'] ?? 'TL'));
+            $stmt->bindValue(':ms', floatval($_POST['min_stock'] ?? 0));
+            $stmt->bindValue(':notes', sanitize($_POST['notes'] ?? ''));
+            if (!$stmt->execute()) {
+                jsonResponse(['error' => 'Kayıt eklenemedi: ' . $db->lastErrorMsg()], 400);
+            }
+
+            $newId = $editId > 0 ? $editId : $db->lastInsertRowID();
+            jsonResponse(['success' => true, 'id' => $newId, 'code' => $code]);
+        }
+        break;
+
+    case 'yarns_bulk':
+        requireLogin();
+        if ($method !== 'POST') jsonResponse(['error' => 'POST gerekli'], 405);
+        $data = json_decode($_POST['data'] ?? '[]', true);
+        if (empty($data)) jsonResponse(['error' => 'Veri bulunamadı'], 400);
+
+        $db = getDB();
+        $db->exec('BEGIN TRANSACTION');
+        try {
+            $inserted = 0;
+            $skipped = 0;
+            foreach ($data as $y) {
+                $code = trim(sanitize($y['code'] ?? ''));
+                $numara = trim(sanitize($y['numara'] ?? ''));
+                $cins = trim(sanitize($y['cins'] ?? ''));
+                if ($numara === '' && $cins === '') { $skipped++; continue; }
+
+                // Numara / kat ayrıştırma: "40/1" veya "40" + Kat kolonu
+                $kat = intval($y['kat'] ?? 1);
+                $numaraSlash = explode('/', $numara);
+                if (count($numaraSlash) > 1) {
+                    $numara = trim($numaraSlash[0]);
+                    $numKat = intval($numaraSlash[1]);
+                    if ($numKat > 0) $kat = $numKat;
+                }
+
+                // Numara türü normalizasyonu (Nm / Ne / D / denye / nm / ne)
+                $numaraType = strtolower(trim(sanitize($y['numara_type'] ?? '')));
+                if (preg_match('/d$/i', $numara) && $numaraType === '') $numaraType = 'denye';
+                $numara = preg_replace('/[^0-9.,]/', '', $numara);
+                if ($numaraType === 'd' || $numaraType === 'denye') $numaraType = 'denye';
+                elseif ($numaraType !== 'ne') $numaraType = 'nm';
+                if ($kat < 1) $kat = 1;
+
+                if (empty($code)) {
+                    $code = generateYarnCode();
+                    if (!$code) jsonResponse(['error' => 'İplik kodu üretilemedi'], 500);
+                }
+
+                // Aynı kod zaten varsa atla
+                $dupSt = $db->prepare("SELECT COUNT(*) FROM yarns WHERE code = :c");
+                $dupSt->bindValue(':c', $code);
+                if (intval($dupSt->execute()->fetchArray(SQLITE3_NUM)[0]) > 0) { $skipped++; continue; }
+
+                $stmt = $db->prepare("INSERT INTO yarns (code, numara, numara_type, kat, cins, unit, supplier, unit_price, currency, min_stock, notes)
+                    VALUES (:code, :no, :ntype, :kat, :cins, :unit, :sup, :up, :cur, :ms, :notes)");
+                $stmt->bindValue(':code', $code);
+                $stmt->bindValue(':no', $numara);
+                $stmt->bindValue(':ntype', $numaraType);
+                $stmt->bindValue(':kat', $kat, SQLITE3_INTEGER);
+                $stmt->bindValue(':cins', $cins);
+                $stmt->bindValue(':unit', sanitize($y['unit'] ?? 'kg'));
+                $stmt->bindValue(':sup', sanitize($y['supplier'] ?? ''));
+                $stmt->bindValue(':up', floatval($y['unit_price'] ?? 0));
+                $stmt->bindValue(':cur', sanitize($y['currency'] ?? 'TL'));
+                $stmt->bindValue(':ms', floatval($y['min_stock'] ?? 0));
+                $stmt->bindValue(':notes', sanitize($y['notes'] ?? ''));
+                if (!$stmt->execute()) { $skipped++; continue; }
+                $inserted++;
+            }
+            $db->exec('COMMIT');
+            jsonResponse(['success' => true, 'inserted' => $inserted, 'skipped' => $skipped]);
+        } catch (Exception $e) {
+            $db->exec('ROLLBACK');
+            jsonResponse(['error' => $e->getMessage()], 500);
+        }
+        break;
+
+    case 'yarn_delete':
+        requireLogin();
+        if ($method !== 'POST') jsonResponse(['error' => 'POST gerekli'], 405);
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) jsonResponse(['error' => 'ID gerekli'], 400);
+        $db = getDB();
+        $db->exec("UPDATE yarns SET is_active = 0 WHERE id = $id");
+        jsonResponse(['success' => true]);
+        break;
+
+    case 'yarn_movements':
+        requireLogin();
+        $db = getDB();
+
+        if ($method === 'GET') {
+            $yarnId = $_GET['yarn_id'] ?? '';
+            $type = $_GET['type'] ?? '';
+            $loomId = $_GET['loom_id'] ?? '';
+            $from = $_GET['date_from'] ?? '';
+            $to = $_GET['date_to'] ?? '';
+            $search = $_GET['search'] ?? '';
+
+            $where = "1=1";
+            $params = [];
+            if ($yarnId) { $where .= " AND m.yarn_id = :yid"; $params[':yid'] = intval($yarnId); }
+            if ($type) { $where .= " AND m.type = :t"; $params[':t'] = $type; }
+            if ($loomId) { $where .= " AND m.loom_id = :lid"; $params[':lid'] = intval($loomId); }
+            if ($from) { $where .= " AND m.date >= :f"; $params[':f'] = $from; }
+            if ($to) { $where .= " AND m.date <= :t2"; $params[':t2'] = $to; }
+            if ($search) {
+                $where .= " AND (y.code LIKE :s OR y.numara LIKE :s OR m.invoice_no LIKE :s OR m.supplier LIKE :s OR m.purpose LIKE :s)";
+                $params[':s'] = '%' . $search . '%';
+            }
+
+            $sql = "SELECT m.*, y.code as yarn_code, y.numara as yarn_numara, y.kat as yarn_kat, y.numara_type as yarn_numara_type, y.cins as yarn_cins, y.unit as yarn_unit,
+                    l.name as loom_name, u.full_name as user_name
+                    FROM yarn_movements m
+                    JOIN yarns y ON m.yarn_id = y.id
+                    LEFT JOIN looms l ON m.loom_id = l.id
+                    LEFT JOIN users u ON m.user_id = u.id
+                    WHERE $where
+                    ORDER BY m.date DESC, m.id DESC LIMIT 500";
+            $stmt = $db->prepare($sql);
+            foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+            $result = $stmt->execute();
+            $rows = [];
+            while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
+            jsonResponse(['data' => $rows]);
+
+        } elseif ($method === 'POST') {
+            $yarnId = intval($_POST['yarn_id'] ?? 0);
+            if (!$yarnId) jsonResponse(['error' => 'İplik seçimi zorunludur'], 400);
+            $type = $_POST['type'] ?? '';
+            if (!in_array($type, ['giris', 'cikis'])) jsonResponse(['error' => 'Geçersiz hareket tipi'], 400);
+            $quantity = floatval($_POST['quantity'] ?? 0);
+            if ($quantity <= 0) jsonResponse(['error' => 'Geçerli bir miktar girin'], 400);
+            $date = sanitize($_POST['date'] ?? date('Y-m-d'));
+
+            $unitPrice = floatval($_POST['unit_price'] ?? 0);
+            $currency = sanitize($_POST['currency'] ?? 'TL');
+
+            // ── Çıkışta stok kontrolü ──
+            if ($type === 'cikis') {
+                $stmt = $db->prepare("SELECT COALESCE((SELECT SUM(CASE WHEN m.type = 'giris' THEN m.quantity ELSE -m.quantity END)
+                                          FROM yarn_movements m WHERE m.yarn_id = :yid), 0)");
+                $stmt->bindValue(':yid', $yarnId, SQLITE3_INTEGER);
+                $currentStock = floatval($stmt->execute()->fetchArray(SQLITE3_NUM)[0]);
+                if ($quantity > $currentStock) {
+                    jsonResponse(['error' => 'Stoktan fazla çıkış yapılamaz. Mevcut stok: ' . rtrim(rtrim(number_format($currentStock, 2, ',', '.'), '0'), ',') . ' ' . (sanitize($_POST['unit'] ?? 'kg'))], 400);
+                }
+            }
+
+            $stmt = $db->prepare("INSERT INTO yarn_movements (yarn_id, type, quantity, bale_count, supplier,
+                invoice_no, unit_price, currency, total_price, loom_id, destination, purpose, date, user_id)
+                VALUES (:yid, :type, :qty, :bale, :sup, :inv, :up, :cur, :total, :lid, :dest, :pur, :d, :uid)");
+            $stmt->bindValue(':yid', $yarnId, SQLITE3_INTEGER);
+            $stmt->bindValue(':type', $type);
+            $stmt->bindValue(':qty', $quantity);
+            $stmt->bindValue(':bale', intval($_POST['bale_count'] ?? 0));
+            $stmt->bindValue(':sup', sanitize($_POST['supplier'] ?? ''));
+            $stmt->bindValue(':inv', sanitize($_POST['invoice_no'] ?? ''));
+            $stmt->bindValue(':up', $unitPrice);
+            $stmt->bindValue(':cur', $currency);
+            $stmt->bindValue(':total', $quantity * $unitPrice);
+            $stmt->bindValue(':lid', $type === 'cikis' ? (intval($_POST['loom_id'] ?? 0) ?: null) : null, SQLITE3_INTEGER);
+            $stmt->bindValue(':dest', sanitize($_POST['destination'] ?? ''));
+            $stmt->bindValue(':pur', sanitize($_POST['purpose'] ?? ''));
+            $stmt->bindValue(':d', $date);
+            $stmt->bindValue(':uid', $_SESSION['user_id'], SQLITE3_INTEGER);
+            if (!$stmt->execute()) {
+                jsonResponse(['error' => 'Hareket kaydedilemedi: ' . $db->lastErrorMsg()], 400);
+            }
+
+            jsonResponse(['success' => true, 'id' => $db->lastInsertRowID()]);
+        }
+        break;
+
+    case 'yarn_movement_delete':
+        requireLogin();
+        if ($method !== 'POST') jsonResponse(['error' => 'POST gerekli'], 405);
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) jsonResponse(['error' => 'ID gerekli'], 400);
+        $db = getDB();
+        $db->exec("DELETE FROM yarn_movements WHERE id = $id");
+        jsonResponse(['success' => true]);
+        break;
+
+    case 'yarn_stats':
+        requireLogin();
+        $db = getDB();
+        $from = $_GET['from'] ?? date('Y-m-01');
+        $to = $_GET['to'] ?? date('Y-m-d');
+
+        $totalYarns = intval($db->querySingle("SELECT COUNT(*) FROM yarns WHERE is_active = 1"));
+
+        // Mevcut stok değeri ve kritik stok (tüm iplikler) — para birimine göre ayrı
+        $result = $db->query("SELECT y.id, y.unit_price, y.min_stock, y.currency,
+            COALESCE((SELECT SUM(CASE WHEN m.type = 'giris' THEN m.quantity ELSE -m.quantity END)
+                       FROM yarn_movements m WHERE m.yarn_id = y.id), 0) as current_stock
+            FROM yarns y WHERE y.is_active = 1");
+        $lowStock = 0;
+        $stockTl = 0.0;
+        $stockUsd = 0.0;
+        $stockEur = 0.0;
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            $cs = floatval($row['current_stock']);
+            if ($cs <= floatval($row['min_stock'])) $lowStock++;
+            $val = $cs * floatval($row['unit_price']);
+            if ($row['currency'] === 'USD') $stockUsd += $val;
+            elseif ($row['currency'] === 'EUR') $stockEur += $val;
+            else $stockTl += $val;
+        }
+
+        $stmt = $db->prepare("SELECT
+            COALESCE(SUM(CASE WHEN type='giris' THEN quantity ELSE 0 END), 0) as giris_qty,
+            COALESCE(SUM(CASE WHEN type='cikis' THEN quantity ELSE 0 END), 0) as cikis_qty,
+            COUNT(*) as total_movements
+            FROM yarn_movements WHERE date BETWEEN :f AND :t");
+        $stmt->bindValue(':f', $from);
+        $stmt->bindValue(':t', $to);
+        $period = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+        jsonResponse([
+            'toplam' => $totalYarns,
+            'kritik' => $lowStock,
+            'stok_degeri' => $stockTl,
+            'stok_degeri_tl' => $stockTl,
+            'stok_degeri_usd' => $stockUsd,
+            'stok_degeri_eur' => $stockEur,
+            'giris_qty' => floatval($period['giris_qty']),
+            'cikis_qty' => floatval($period['cikis_qty']),
+            'hareket' => intval($period['total_movements']),
+            'period' => ['from' => $from, 'to' => $to]
+        ]);
+        break;
+
+    case 'export_yarns':
+        requireLogin();
+        $db = getDB();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="iplikler_' . date('Y-m-d') . '.csv"');
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($output, ['Kod', 'Numara', 'Numara Türü', 'Kat', 'Cins', 'Birim', 'Mevcut Stok', 'Min Stok', 'Tedarikçi', 'Birim Fiyat', 'Para Birimi', 'Notlar'], ';');
+        $result = $db->query("SELECT y.*,
+            COALESCE((SELECT SUM(CASE WHEN m.type = 'giris' THEN m.quantity ELSE -m.quantity END)
+                       FROM yarn_movements m WHERE m.yarn_id = y.id), 0) as current_stock
+            FROM yarns y WHERE y.is_active = 1 ORDER BY y.code");
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            $tLabel = $row['numara_type'] === 'ne' ? 'Ne' : ($row['numara_type'] === 'denye' ? 'Denye' : 'Nm');
+            fputcsv($output, [
+                $row['code'], $row['numara'] ?? '', $tLabel, $row['kat'] ?? 1, $row['cins'] ?? '', $row['unit'],
+                $row['current_stock'], $row['min_stock'], $row['supplier'] ?? '',
+                $row['unit_price'], $row['currency'], $row['notes'] ?? ''
+            ], ';');
+        }
+        fclose($output);
+        exit;
+
+    case 'export_yarn_movements':
+        requireLogin();
+        $db = getDB();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="iplik_hareketleri_' . date('Y-m-d') . '.csv"');
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($output, ['ID', 'Tarih', 'İplik', 'Tip', 'Miktar', 'Bobin/Top', 'Tedarikçi', 'Fatura No', 'Birim Fiyat', 'Toplam', 'Tezgah', 'Çıkış Yeri', 'Amaç/Not'], ';');
+        $result = $db->query("SELECT m.*, y.code as yarn_code, y.numara as yarn_numara, y.kat as yarn_kat, y.unit as yarn_unit, l.name as loom_name
+            FROM yarn_movements m
+            JOIN yarns y ON m.yarn_id = y.id
+            LEFT JOIN looms l ON m.loom_id = l.id
+            ORDER BY m.date DESC, m.id DESC");
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            fputcsv($output, [
+                $row['id'], $row['date'],
+                $row['yarn_code'] . ($row['yarn_numara'] ? ' ' . $row['yarn_numara'] : ''),
+                $row['type'] === 'giris' ? 'Giriş' : 'Çıkış', $row['quantity'], $row['bale_count'] ?? 0,
+                $row['supplier'] ?? '', $row['invoice_no'] ?? '', $row['unit_price'], $row['total_price'],
+                $row['loom_name'] ?? '', $row['destination'] ?? '', $row['purpose'] ?? ''
             ], ';');
         }
         fclose($output);

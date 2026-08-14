@@ -121,6 +121,10 @@
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg></span>
         <span class="nav-label">Ürünler</span>
       </div>
+      <div class="nav-item" data-page="iplik" onclick="navigateTo('iplik')">
+        <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a10 10 0 0 1 0 20M9 3a10 10 0 0 1 0 20M13 3v18M5 3v18M21 8H3M21 16H3"/></svg></span>
+        <span class="nav-label">İplik Stok</span>
+      </div>
       <div class="nav-item" data-page="depo-giris" onclick="navigateTo('depo-giris')">
         <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg></span>
         <span class="nav-label">Depo Giriş</span>
@@ -226,5 +230,6 @@
 <script src="app2.js"></script>
 <script src="app3.js"></script>
 <script src="app4.js"></script>
+<script src="app5.js"></script>
 </body>
 </html>

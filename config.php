@@ -387,6 +387,68 @@ function initializeDatabase() {
     @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_product ON kartelas(product_id)");
     @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_history_id ON kartela_history(kartela_id)");
 
+    // ── İPLİK STOK (Giriş/Çıkış Takibi) ──
+    $db->exec("CREATE TABLE IF NOT EXISTS yarns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE NOT NULL,
+        numara TEXT,
+        numara_type TEXT DEFAULT 'nm',
+        kat INTEGER DEFAULT 1,
+        cins TEXT,
+        unit TEXT DEFAULT 'kg',
+        supplier TEXT,
+        unit_price REAL DEFAULT 0,
+        currency TEXT DEFAULT 'TL',
+        min_stock REAL DEFAULT 0,
+        notes TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    // Migration: kat + numara_type sütunları (mevcut kurulumlar için)
+    $cols = @$db->query("PRAGMA table_info(yarns)");
+    $hasKat = false;
+    $hasType = false;
+    while ($col = @$cols->fetchArray(SQLITE3_ASSOC)) {
+        if ($col['name'] === 'kat') $hasKat = true;
+        if ($col['name'] === 'numara_type') $hasType = true;
+    }
+    if (!$hasKat) @$db->exec("ALTER TABLE yarns ADD COLUMN kat INTEGER DEFAULT 1");
+    if (!$hasType) @$db->exec("ALTER TABLE yarns ADD COLUMN numara_type TEXT DEFAULT 'nm'");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS yarn_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        yarn_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        bale_count INTEGER DEFAULT 0,
+        supplier TEXT,
+        invoice_no TEXT,
+        unit_price REAL DEFAULT 0,
+        currency TEXT DEFAULT 'TL',
+        total_price REAL DEFAULT 0,
+        loom_id INTEGER,
+        destination TEXT,
+        purpose TEXT,
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        user_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (yarn_id) REFERENCES yarns(id),
+        FOREIGN KEY (loom_id) REFERENCES looms(id)
+    )");
+
+    // Migration: destination sütunu (mevcut kurulumlar için)
+    $cols2 = @$db->query("PRAGMA table_info(yarn_movements)");
+    $hasDest = false;
+    while ($col = @$cols2->fetchArray(SQLITE3_ASSOC)) { if ($col['name'] === 'destination') $hasDest = true; }
+    if (!$hasDest) @$db->exec("ALTER TABLE yarn_movements ADD COLUMN destination TEXT");
+
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_yarn_movements_yarn ON yarn_movements(yarn_id)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_yarn_movements_type ON yarn_movements(type)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_yarn_movements_date ON yarn_movements(date)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_yarn_movements_loom ON yarn_movements(loom_id)");
+
     // Günlük Randıman Girişleri
     $db->exec("CREATE TABLE IF NOT EXISTS loom_daily_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -472,6 +534,9 @@ function initializeDatabase() {
     // Kartela barkod serisi (mevcut kurulumlar için)
     @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('kartela_barcode_prefix', 'K')");
     @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('kartela_barcode_last', '0')");
+
+    // İplik kod serisi (mevcut kurulumlar için)
+    @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('yarn_code_last', '0')");
 
     // ── Indexler (Performans İçin) ──
     @$db->exec("CREATE INDEX IF NOT EXISTS idx_qc_loom_id ON quality_controls(loom_id)");

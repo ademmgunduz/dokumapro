@@ -518,6 +518,7 @@ async function printPackingList(id, onlyPreview = false) {
       <html>
         <head>
           <title>Çeki Listesi - #${shipment.id}</title>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
           <style>
             @media print { @page { size: A4; margin: 10mm; } }
             body { font-family: 'Helvetica', 'Arial', sans-serif; color: #333; line-height: 1.2; font-size: 9pt; }
@@ -529,6 +530,11 @@ async function printPackingList(id, onlyPreview = false) {
             table.packing-list th, table.packing-list td { border: 1px solid #000; padding: 3px 5px; text-align: center; }
             table.packing-list th { background: #f0f0f0; font-size: 8pt; text-transform: uppercase; }
             table.packing-list td { font-size: 8pt; }
+            table.packing-list td .roll-bc svg { max-width: 90px; height: 24px; }
+            table.packing-list td .roll-bc { margin-top: 2px; }
+            
+            .doc-barcode { text-align: center; margin-top: 8px; }
+            .doc-barcode svg { max-width: 160px; height: 34px; }
             
             .summary { margin-top: 15px; text-align: right; font-weight: bold; font-size: 10pt; }
             .footer-notes { margin-top: 20px; border-top: 1px dashed #999; padding-top: 10px; font-size: 8pt; font-style: italic; }
@@ -550,6 +556,7 @@ async function printPackingList(id, onlyPreview = false) {
                 <strong>SEVKİYAT TARİHİ:</strong> ${fmtDate(shipment.shipment_date)}<br>
                 <strong>ARAÇ / PLAKA:</strong> ${shipment.plate_no || '-'}<br>
                 <strong>BELGE NO:</strong> #${shipment.id}
+                <div class="doc-barcode"><svg id="bc-ship"></svg></div>
               </td>
             </tr>
           </table>
@@ -573,7 +580,10 @@ async function printPackingList(id, onlyPreview = false) {
                 <tr>
                   <td>${idx + 1}</td>
                   <td>${it.loom_name || '-'}</td>
-                  <td style="font-weight:bold">${it.roll_no}</td>
+                  <td style="font-weight:bold">
+                    ${it.roll_no}
+                    <div class="roll-bc"><svg id="bc-${idx}"></svg></div>
+                  </td>
                   <td>${it.lot_no || it.party_no || '-'}</td>
                   <td style="text-align:left">${it.product_code || ''} - ${it.product_name || ''}</td>
                   <td style="font-weight:bold">${Number(it.length_m).toFixed(1)}</td>
@@ -597,7 +607,26 @@ async function printPackingList(id, onlyPreview = false) {
             </div>
           </div>
 
-          ${onlyPreview ? '' : '<script>window.print(); setTimeout(() => window.close(), 500);</script>'}
+          <script>
+            try {
+              JsBarcode("#bc-ship", "CEK-${shipment.id}", {
+                format: "CODE128",
+                width: 2,
+                height: 28,
+                displayValue: true,
+                fontSize: 10,
+                margin: 2
+              });
+              ${items.map((it, idx) => `JsBarcode("#bc-${idx}", "${String(it.roll_no || '').replace(/"/g, '').trim()}", {
+                format: "CODE128",
+                width: 1.4,
+                height: 20,
+                displayValue: false,
+                margin: 1
+              });`).join('\n')}
+            } catch (e) { console.error('Barkod hatası:', e); }
+            ${onlyPreview ? '' : 'window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };'}
+          </script>
         </body>
       </html>
     `);
