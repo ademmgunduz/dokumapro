@@ -348,6 +348,45 @@ function initializeDatabase() {
     @$db->exec("ALTER TABLE looms ADD COLUMN next_job_notes TEXT");
     @$db->exec("ALTER TABLE stock_movements ADD COLUMN act_type TEXT DEFAULT 'manual'");
 
+    // ── KARTELA (Kumaş Numune Kartı) TAKİP ──
+    $db->exec("CREATE TABLE IF NOT EXISTS kartelas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kartela_no TEXT UNIQUE NOT NULL,
+        product_id INTEGER,
+        fabric_type_id INTEGER,
+        customer_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'fabrikada',
+        location TEXT,
+        sample_count INTEGER DEFAULT 1,
+        send_date DATE,
+        return_date DATE,
+        notes TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id),
+        FOREIGN KEY (fabric_type_id) REFERENCES fabric_types(id),
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
+    )");
+
+    // Kartela durum geçmişi (zaman çizelgesi)
+    $db->exec("CREATE TABLE IF NOT EXISTS kartela_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kartela_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        notes TEXT,
+        user_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (kartela_id) REFERENCES kartelas(id) ON DELETE CASCADE
+    )");
+
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_status ON kartelas(status)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_customer ON kartelas(customer_id)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_product ON kartelas(product_id)");
+    @$db->exec("CREATE INDEX IF NOT EXISTS idx_kartela_history_id ON kartela_history(kartela_id)");
+
     // Günlük Randıman Girişleri
     $db->exec("CREATE TABLE IF NOT EXISTS loom_daily_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -429,6 +468,10 @@ function initializeDatabase() {
 
     // Varsayılan çözgü uyarı eşiği (mevcut kurulumlar için)
     @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('warp_low_threshold', '2000')");
+
+    // Kartela barkod serisi (mevcut kurulumlar için)
+    @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('kartela_barcode_prefix', 'K')");
+    @$db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('kartela_barcode_last', '0')");
 
     // ── Indexler (Performans İçin) ──
     @$db->exec("CREATE INDEX IF NOT EXISTS idx_qc_loom_id ON quality_controls(loom_id)");

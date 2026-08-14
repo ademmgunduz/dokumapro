@@ -50,6 +50,30 @@ function generateBarcode($type = 'internal') {
     return null;
 }
 
+// Kartela barkod üretme (örn. K0001, K0002...)
+function generateKartelaBarcode() {
+    $db = getDB();
+    $prefix = $db->querySingle("SELECT value FROM settings WHERE key = 'kartela_barcode_prefix'") ?: 'K';
+
+    $maxRetries = 5;
+    for ($i = 0; $i < $maxRetries; $i++) {
+        $db->exec('BEGIN TRANSACTION');
+        try {
+            $last = intval($db->querySingle("SELECT value FROM settings WHERE key = 'kartela_barcode_last'") ?: 0);
+            $new = $last + 1;
+            $stmt = $db->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('kartela_barcode_last', :v)");
+            $stmt->bindValue(':v', $new, SQLITE3_INTEGER);
+            $stmt->execute();
+            $db->exec('COMMIT');
+            return $prefix . sprintf('%04d', $new);
+        } catch (Exception $e) {
+            $db->exec('ROLLBACK');
+            if ($i === $maxRetries - 1) throw $e;
+        }
+    }
+    return null;
+}
+
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -2574,6 +2598,202 @@ switch ($action) {
         $db->exec("DELETE FROM program_buyers WHERE id = $id");
         jsonResponse(['success' => true]);
         break;
+
+    // ═══════════════════════════════════════
+    //  KARTELA TAKİP (Kumaş Numune Kartı)
+    // ═══════════════════════════════════════
+    case 'kartelas':
+        requireLogin();
+        $db = getDB();
+
+        if ($method === 'GET') {
+            $search = $_GET['search'] ?? '';
+            $status = $_GET['status'] ?? '';
+            $customerId = $_GET['customer_id'] ?? '';
+            $productId = $_GET['product_id'] ?? '';
+
+            $where = "k.is_active = 1";
+            $params = [];
+            if ($search) {
+                $where .= " AND (k.kartela_no LIKE :s OR k.location LIKE :s OR k.notes LIKE :s OR c.name LIKE :s OR p.name LIKE :s OR p.code LIKE :s)";
+                $params[':s'] = '%' . $search . '%';
+            }
+            if ($status) { $where .= " AND k.status = :st"; $params[':st'] = $status; }
+            if ($customerId) { $where .= " AND k.customer_id = :cid"; $params[':cid'] = intval($customerId); }
+            if ($productId) { $where .= " AND k.product_id = :pid"; $params[':pid'] = intval($productId); }
+
+            $sql = "SELECT k.*, p.code as product_code, p.name as product_name,
+                    ft.name as fabric_type_name, c.name as customer_name,
+                    (SELECT COUNT(*) FROM kartela_history kh WHERE kh.kartela_id = k.id) as history_count
+                    FROM kartelas k
+                    LEFT JOIN products p ON k.product_id = p.id
+                    LEFT JOIN fabric_types ft ON k.fabric_type_id = ft.id
+                    LEFT JOIN customers c ON k.customer_id = c.id
+                    WHERE $where
+                    ORDER BY k.id DESC";
+            $stmt = $db->prepare($sql);
+            foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+            $result = $stmt->execute();
+            $rows = [];
+            while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
+            jsonResponse(['data' => $rows]);
+
+        } elseif ($method === 'POST') {
+            $editId = intval($_POST['id'] ?? 0);
+            $kartelaNo = trim($_POST['kartela_no'] ?? '');
+            $status = sanitize($_POST['status'] ?? 'fabrikada');
+            $validStatuses = ['fabrikada', 'musteride', 'iade_edildi', 'onaylandi', 'reddedildi', 'kayip'];
+            if (!in_array($status, $validStatuses)) $status = 'fabrikada';
+
+            if ($editId > 0) {
+                $stmt = $db->prepare("UPDATE kartelas SET kartela_no=:no, product_id=:pid, fabric_type_id=:ftid,
+                    customer_id=:cid, status=:st, location=:loc, sample_count=:cnt,
+                    send_date=:sd, return_date=:rd, notes=:notes, updated_at=datetime('now')
+                    WHERE id=:id");
+                $stmt->bindValue(':id', $editId, SQLITE3_INTEGER);
+            } else {
+                if (empty($kartelaNo)) {
+                    $kartelaNo = generateKartelaBarcode();
+                    if (!$kartelaNo) jsonResponse(['error' => 'Kartela numarası üretilemedi'], 500);
+                }
+                $stmt = $db->prepare("INSERT INTO kartelas (kartela_no, product_id, fabric_type_id, customer_id,
+                    status, location, sample_count, send_date, return_date, notes, created_by)
+                    VALUES (:no, :pid, :ftid, :cid, :st, :loc, :cnt, :sd, :rd, :notes, :uid)");
+                $stmt->bindValue(':uid', $_SESSION['user_id'], SQLITE3_INTEGER);
+            }
+
+            $stmt->bindValue(':no', sanitize($kartelaNo));
+            $stmt->bindValue(':pid', intval($_POST['product_id'] ?? 0) ?: null);
+            $stmt->bindValue(':ftid', intval($_POST['fabric_type_id'] ?? 0) ?: null);
+            $stmt->bindValue(':cid', intval($_POST['customer_id'] ?? 0) ?: null);
+            $stmt->bindValue(':st', $status);
+            $stmt->bindValue(':loc', sanitize($_POST['location'] ?? ''));
+            $stmt->bindValue(':cnt', intval($_POST['sample_count'] ?? 1) ?: 1);
+            $stmt->bindValue(':sd', sanitize($_POST['send_date'] ?? '') ?: null);
+            $stmt->bindValue(':rd', sanitize($_POST['return_date'] ?? '') ?: null);
+            $stmt->bindValue(':notes', sanitize($_POST['notes'] ?? ''));
+            $stmt->execute();
+
+            $newId = $editId > 0 ? $editId : $db->lastInsertRowID();
+
+            // Yeni kayıtta başlangıç durumu geçmişe işlenir
+            if ($editId === 0) {
+                $stmtH = $db->prepare("INSERT INTO kartela_history (kartela_id, status, date, notes, user_id) VALUES (:kid, :st, :d, :n, :uid)");
+                $stmtH->bindValue(':kid', $newId, SQLITE3_INTEGER);
+                $stmtH->bindValue(':st', $status);
+                $stmtH->bindValue(':d', date('Y-m-d'));
+                $stmtH->bindValue(':n', sanitize($_POST['notes'] ?? ''));
+                $stmtH->bindValue(':uid', $_SESSION['user_id'], SQLITE3_INTEGER);
+                $stmtH->execute();
+            }
+
+            jsonResponse(['success' => true, 'id' => $newId, 'kartela_no' => $kartelaNo]);
+        }
+        break;
+
+    case 'kartela_delete':
+        requireLogin();
+        if ($method !== 'POST') jsonResponse(['error' => 'POST gerekli'], 405);
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) jsonResponse(['error' => 'ID gerekli'], 400);
+        $db = getDB();
+        $db->exec("UPDATE kartelas SET is_active = 0 WHERE id = $id");
+        jsonResponse(['success' => true]);
+        break;
+
+    case 'kartela_status_update':
+        requireLogin();
+        if ($method !== 'POST') jsonResponse(['error' => 'POST gerekli'], 405);
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) jsonResponse(['error' => 'ID gerekli'], 400);
+        $status = sanitize($_POST['status'] ?? '');
+        $validStatuses = ['fabrikada', 'musteride', 'iade_edildi', 'onaylandi', 'reddedildi', 'kayip'];
+        if (!in_array($status, $validStatuses)) jsonResponse(['error' => 'Geçersiz durum'], 400);
+        $date = sanitize($_POST['date'] ?? date('Y-m-d'));
+        $notes = sanitize($_POST['notes'] ?? '');
+        $db = getDB();
+
+        $stmt = $db->prepare("UPDATE kartelas SET status=:st,
+            send_date = CASE WHEN :st = 'musteride' AND :sd != '' THEN :sd ELSE send_date END,
+            return_date = CASE WHEN :st IN ('iade_edildi','onaylandi','reddedildi') AND :rd != '' THEN :rd ELSE return_date END,
+            updated_at=datetime('now') WHERE id=:id");
+        $stmt->bindValue(':st', $status);
+        $stmt->bindValue(':sd', $date);
+        $stmt->bindValue(':rd', $date);
+        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+        $stmt->execute();
+
+        $stmtH = $db->prepare("INSERT INTO kartela_history (kartela_id, status, date, notes, user_id) VALUES (:kid, :st, :d, :n, :uid)");
+        $stmtH->bindValue(':kid', $id, SQLITE3_INTEGER);
+        $stmtH->bindValue(':st', $status);
+        $stmtH->bindValue(':d', $date);
+        $stmtH->bindValue(':n', $notes);
+        $stmtH->bindValue(':uid', $_SESSION['user_id'], SQLITE3_INTEGER);
+        $stmtH->execute();
+
+        jsonResponse(['success' => true]);
+        break;
+
+    case 'kartela_history':
+        requireLogin();
+        $id = intval($_GET['kartela_id'] ?? 0);
+        if (!$id) jsonResponse(['error' => 'kartela_id gerekli'], 400);
+        $db = getDB();
+        $stmt = $db->prepare("SELECT kh.*, u.full_name as user_name
+            FROM kartela_history kh
+            LEFT JOIN users u ON kh.user_id = u.id
+            WHERE kh.kartela_id = :id ORDER BY kh.created_at DESC, kh.id DESC");
+        $stmt->bindValue(':id', $id, SQLITE3_INTEGER);
+        $result = $stmt->execute();
+        $rows = [];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
+        jsonResponse(['data' => $rows]);
+        break;
+
+    case 'kartela_stats':
+        requireLogin();
+        $db = getDB();
+        $result = $db->query("SELECT status, COUNT(*) as count FROM kartelas WHERE is_active = 1 GROUP BY status");
+        $counts = ['fabrikada' => 0, 'musteride' => 0, 'iade_edildi' => 0, 'onaylandi' => 0, 'reddedildi' => 0, 'kayip' => 0];
+        $total = 0;
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            if (isset($counts[$row['status']])) $counts[$row['status']] = intval($row['count']);
+            $total += intval($row['count']);
+        }
+        $counts['toplam'] = $total;
+        jsonResponse($counts);
+        break;
+
+    case 'export_kartela':
+        requireLogin();
+        $db = getDB();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="kartela_listesi_' . date('Y-m-d') . '.csv"');
+        $output = fopen('php://output', 'w');
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+        fputcsv($output, ['ID', 'Kartela No', 'Ürün', 'Kumaş Tipi', 'Müşteri', 'Durum', 'Konum', 'Numune Adedi', 'Gönderim Tarihi', 'İade Tarihi', 'Notlar', 'Oluşturma'], ';');
+
+        $sql = "SELECT k.*, p.code as product_code, p.name as product_name,
+                ft.name as fabric_type_name, c.name as customer_name
+                FROM kartelas k
+                LEFT JOIN products p ON k.product_id = p.id
+                LEFT JOIN fabric_types ft ON k.fabric_type_id = ft.id
+                LEFT JOIN customers c ON k.customer_id = c.id
+                WHERE k.is_active = 1 ORDER BY k.id DESC";
+        $result = $db->query($sql);
+        $statusLabels = ['fabrikada' => 'Fabrikada', 'musteride' => 'Müşteride', 'iade_edildi' => 'İade Edildi', 'onaylandi' => 'Onaylandı', 'reddedildi' => 'Reddedildi', 'kayip' => 'Kayıp'];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+            fputcsv($output, [
+                $row['id'], $row['kartela_no'],
+                ($row['product_code'] ? $row['product_code'] . ' - ' : '') . ($row['product_name'] ?? ''),
+                $row['fabric_type_name'] ?? '', $row['customer_name'] ?? '',
+                $statusLabels[$row['status']] ?? $row['status'], $row['location'] ?? '',
+                $row['sample_count'], $row['send_date'] ?? '', $row['return_date'] ?? '',
+                $row['notes'] ?? '', $row['created_at']
+            ], ';');
+        }
+        fclose($output);
+        exit;
 
     // ═══════════════════════════════════════
     //  AKILLI BİLDİRİMLER (Smart Alerts)
