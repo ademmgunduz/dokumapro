@@ -149,6 +149,15 @@ async function filterKartelas() {
 // ═══════════════════════════════
 //  CRUD
 // ═══════════════════════════════
+function onKartelaProductChange() {
+  const pid = document.getElementById('kartProduct').value;
+  const compInput = document.getElementById('kartComposition');
+  if (!compInput) return;
+  if (compInput.value.trim()) return;
+  const p = products.find(x => x.id == pid);
+  if (p && p.composition) compInput.value = p.composition;
+}
+
 function openKartelaModal(id = 0) {
   const k = id ? getKartela(id) : null;
   openModal(k ? `Kartela Düzenle — ${k.kartela_no}` : 'Yeni Kartela', `
@@ -163,8 +172,12 @@ function openKartelaModal(id = 0) {
           <label>Numune Adedi</label>
         </div>
         <div class="form-floating">
-          <select id="kartProduct">${productOptions(k ? k.product_id : '')}</select>
+          <select id="kartProduct" onchange="onKartelaProductChange()">${productOptions(k ? k.product_id : '')}</select>
           <label style="top:8px;transform:none;font-size:10px;color:var(--accent)">Ürün / Kumaş</label>
+        </div>
+        <div class="form-floating">
+          <input type="text" id="kartComposition" placeholder=" " value="${k ? (k.composition || '') : ''}">
+          <label>Kompozisyon</label>
         </div>
         <div class="form-floating">
           <select id="kartFabric">${fabricTypeOptions(k ? k.fabric_type_id : '')}</select>
@@ -212,6 +225,7 @@ async function saveKartela(e, id) {
       product_id: document.getElementById('kartProduct').value,
       fabric_type_id: document.getElementById('kartFabric').value,
       customer_id: document.getElementById('kartCustomer').value,
+      composition: document.getElementById('kartComposition').value,
       status: document.getElementById('kartStatus').value,
       location: document.getElementById('kartLocation').value,
       sample_count: document.getElementById('kartCount').value,
@@ -299,6 +313,10 @@ async function showKartelaDetail(id) {
         <div>
           <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Ürün</div>
           <div style="font-weight:600;margin-top:4px">${k.product_code ? `${k.product_code} — ${k.product_name || ''}` : '-'}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Kompozisyon</div>
+          <div style="font-weight:600;margin-top:4px">${k.composition || '-'}</div>
         </div>
         <div>
           <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Kumaş Tipi</div>
@@ -406,6 +424,7 @@ function printKartelaLabel(id) {
           <div class="barcode-wrapper"><svg id="barcode"></svg></div>
           <div class="kno">${k.kartela_no}</div>
           <div class="info-row"><span class="info-label">Ürün</span><span>${k.product_code || '-'} ${k.product_name || ''}</span></div>
+          ${k.composition ? `<div class="info-row"><span class="info-label">Kompozisyon</span><span style="font-size:7px">${k.composition}</span></div>` : ''}
           <div class="info-row"><span class="info-label">Müşteri</span><span>${k.customer_name || '-'}</span></div>
           <div class="info-row"><span class="info-label">Adet</span><span>${k.sample_count}</span><span class="status-tag">${stLabel}</span></div>
         </div>
@@ -428,6 +447,7 @@ function exportKartelas() {
     'Kartela No': k.kartela_no,
     'Ürün Kodu': k.product_code || '',
     'Ürün Adı': k.product_name || '',
+    'Kompozisyon': k.composition || '',
     'Kumaş Tipi': k.fabric_type_name || '',
     'Müşteri': k.customer_name || '',
     'Durum': (KARTELA_STATUSES[k.status] || { label: k.status }).label,

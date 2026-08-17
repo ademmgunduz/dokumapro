@@ -355,6 +355,7 @@ function initializeDatabase() {
         product_id INTEGER,
         fabric_type_id INTEGER,
         customer_id INTEGER,
+        composition TEXT,
         status TEXT NOT NULL DEFAULT 'fabrikada',
         location TEXT,
         sample_count INTEGER DEFAULT 1,
@@ -369,6 +370,8 @@ function initializeDatabase() {
         FOREIGN KEY (fabric_type_id) REFERENCES fabric_types(id),
         FOREIGN KEY (customer_id) REFERENCES customers(id)
     )");
+
+    @$db->exec("ALTER TABLE kartelas ADD COLUMN composition TEXT");
 
     // Kartela durum geçmişi (zaman çizelgesi)
     $db->exec("CREATE TABLE IF NOT EXISTS kartela_history (

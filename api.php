@@ -2656,7 +2656,8 @@ switch ($action) {
             if ($customerId) { $where .= " AND k.customer_id = :cid"; $params[':cid'] = intval($customerId); }
             if ($productId) { $where .= " AND k.product_id = :pid"; $params[':pid'] = intval($productId); }
 
-            $sql = "SELECT k.*, p.code as product_code, p.name as product_name,
+            $sql = "SELECT k.*, k.composition, p.code as product_code, p.name as product_name,
+                    p.composition as product_composition,
                     ft.name as fabric_type_name, c.name as customer_name,
                     (SELECT COUNT(*) FROM kartela_history kh WHERE kh.kartela_id = k.id) as history_count
                     FROM kartelas k
@@ -2681,7 +2682,7 @@ switch ($action) {
 
             if ($editId > 0) {
                 $stmt = $db->prepare("UPDATE kartelas SET kartela_no=:no, product_id=:pid, fabric_type_id=:ftid,
-                    customer_id=:cid, status=:st, location=:loc, sample_count=:cnt,
+                    customer_id=:cid, composition=:comp, status=:st, location=:loc, sample_count=:cnt,
                     send_date=:sd, return_date=:rd, notes=:notes, updated_at=datetime('now')
                     WHERE id=:id");
                 $stmt->bindValue(':id', $editId, SQLITE3_INTEGER);
@@ -2691,8 +2692,8 @@ switch ($action) {
                     if (!$kartelaNo) jsonResponse(['error' => 'Kartela numarası üretilemedi'], 500);
                 }
                 $stmt = $db->prepare("INSERT INTO kartelas (kartela_no, product_id, fabric_type_id, customer_id,
-                    status, location, sample_count, send_date, return_date, notes, created_by)
-                    VALUES (:no, :pid, :ftid, :cid, :st, :loc, :cnt, :sd, :rd, :notes, :uid)");
+                    composition, status, location, sample_count, send_date, return_date, notes, created_by)
+                    VALUES (:no, :pid, :ftid, :cid, :comp, :st, :loc, :cnt, :sd, :rd, :notes, :uid)");
                 $stmt->bindValue(':uid', $_SESSION['user_id'], SQLITE3_INTEGER);
             }
 
@@ -2700,6 +2701,7 @@ switch ($action) {
             $stmt->bindValue(':pid', intval($_POST['product_id'] ?? 0) ?: null);
             $stmt->bindValue(':ftid', intval($_POST['fabric_type_id'] ?? 0) ?: null);
             $stmt->bindValue(':cid', intval($_POST['customer_id'] ?? 0) ?: null);
+            $stmt->bindValue(':comp', sanitize($_POST['composition'] ?? ''));
             $stmt->bindValue(':st', $status);
             $stmt->bindValue(':loc', sanitize($_POST['location'] ?? ''));
             $stmt->bindValue(':cnt', intval($_POST['sample_count'] ?? 1) ?: 1);
@@ -2805,7 +2807,7 @@ switch ($action) {
         header('Content-Disposition: attachment; filename="kartela_listesi_' . date('Y-m-d') . '.csv"');
         $output = fopen('php://output', 'w');
         fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
-        fputcsv($output, ['ID', 'Kartela No', 'Ürün', 'Kumaş Tipi', 'Müşteri', 'Durum', 'Konum', 'Numune Adedi', 'Gönderim Tarihi', 'İade Tarihi', 'Notlar', 'Oluşturma'], ';');
+        fputcsv($output, ['ID', 'Kartela No', 'Ürün', 'Kumaş Tipi', 'Müşteri', 'Kompozisyon', 'Durum', 'Konum', 'Numune Adedi', 'Gönderim Tarihi', 'İade Tarihi', 'Notlar', 'Oluşturma'], ';');
 
         $sql = "SELECT k.*, p.code as product_code, p.name as product_name,
                 ft.name as fabric_type_name, c.name as customer_name
@@ -2821,6 +2823,7 @@ switch ($action) {
                 $row['id'], $row['kartela_no'],
                 ($row['product_code'] ? $row['product_code'] . ' - ' : '') . ($row['product_name'] ?? ''),
                 $row['fabric_type_name'] ?? '', $row['customer_name'] ?? '',
+                $row['composition'] ?? '',
                 $statusLabels[$row['status']] ?? $row['status'], $row['location'] ?? '',
                 $row['sample_count'], $row['send_date'] ?? '', $row['return_date'] ?? '',
                 $row['notes'] ?? '', $row['created_at']
