@@ -3127,6 +3127,32 @@ switch ($action) {
         ]);
         break;
 
+    case 'yarn_stock_report':
+        requireLogin();
+        $db = getDB();
+        $from = $_GET['from'] ?? date('Y-m-01');
+        $to = $_GET['to'] ?? date('Y-m-d');
+
+        $sql = "SELECT y.id, y.code, y.numara, y.numara_type, y.kat, y.cins, y.unit,
+                    y.supplier, y.unit_price, y.currency, y.min_stock,
+                    COALESCE((SELECT SUM(CASE WHEN m.type = 'giris' THEN m.quantity ELSE -m.quantity END)
+                               FROM yarn_movements m WHERE m.yarn_id = y.id), 0) as current_stock,
+                    COALESCE((SELECT SUM(m.quantity) FROM yarn_movements m
+                               WHERE m.yarn_id = y.id AND m.type = 'giris' AND m.date BETWEEN :f AND :t), 0) as period_giris,
+                    COALESCE((SELECT SUM(m.quantity) FROM yarn_movements m
+                               WHERE m.yarn_id = y.id AND m.type = 'cikis' AND m.date BETWEEN :f AND :t), 0) as period_cikis,
+                    (SELECT MAX(m.date) FROM yarn_movements m WHERE m.yarn_id = y.id) as last_movement_date,
+                    (SELECT COUNT(*) FROM yarn_movements m WHERE m.yarn_id = y.id) as movement_count
+                FROM yarns y WHERE y.is_active = 1 ORDER BY y.code ASC";
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':f', $from);
+        $stmt->bindValue(':t', $to);
+        $result = $stmt->execute();
+        $rows = [];
+        while ($row = $result->fetchArray(SQLITE3_ASSOC)) $rows[] = $row;
+        jsonResponse(['data' => $rows, 'period' => ['from' => $from, 'to' => $to]]);
+        break;
+
     case 'export_yarns':
         requireLogin();
         $db = getDB();

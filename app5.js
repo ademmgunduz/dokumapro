@@ -324,6 +324,7 @@ async function loadIplik() {
     <div class="filter-bar" style="justify-content:flex-start;margin-bottom:16px;gap:6px">
       <button class="btn btn-sm ${yarnActiveTab() === 'yarns' ? 'btn-primary' : 'btn-secondary'}" id="yarnTabBtn1" onclick="showYarnTab('yarns')">🧵 İplikler</button>
       <button class="btn btn-sm ${yarnActiveTab() === 'moves' ? 'btn-primary' : 'btn-secondary'}" id="yarnTabBtn2" onclick="showYarnTab('moves')">⇄ Stok Hareketleri</button>
+      <button class="btn btn-sm ${yarnActiveTab() === 'report' ? 'btn-primary' : 'btn-secondary'}" id="yarnTabBtn3" onclick="showYarnTab('report')">📊 Stok Raporu</button>
     </div>
     <div id="yarnTabContent"></div>
   `;
@@ -342,9 +343,12 @@ function showYarnTab(tab) {
   setYarnTab(tab);
   const btn1 = document.getElementById('yarnTabBtn1');
   const btn2 = document.getElementById('yarnTabBtn2');
+  const btn3 = document.getElementById('yarnTabBtn3');
   if (btn1) { btn1.classList.toggle('btn-primary', tab === 'yarns'); btn1.classList.toggle('btn-secondary', tab !== 'yarns'); }
   if (btn2) { btn2.classList.toggle('btn-primary', tab === 'moves'); btn2.classList.toggle('btn-secondary', tab !== 'moves'); }
+  if (btn3) { btn3.classList.toggle('btn-primary', tab === 'report'); btn3.classList.toggle('btn-secondary', tab !== 'report'); }
   if (tab === 'moves') loadYarnMovements();
+  else if (tab === 'report') loadYarnStockReport();
   else loadYarnList();
 }
 
@@ -1261,4 +1265,227 @@ async function exportYarnMovementsCsv() {
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════
+//  İPLİK STOK RAPORU (3. SEKME)
+// ═══════════════════════════════════════
+let _yarnReportCache = [];
+
+async function loadYarnStockReport() {
+  const box = document.getElementById('yarnTabContent');
+  if (!box) return;
+  const today = new Date().toISOString().split('T')[0];
+  const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  box.innerHTML = `
+    <div class="filter-bar">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);margin-right:4px">Dönem:</label>
+      <input type="date" id="ysrFrom" value="${firstDay}" onchange="filterYarnStockReport()">
+      <input type="date" id="ysrTo" value="${today}" onchange="filterYarnStockReport()">
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="exportYarnStockReport()">📥 Excel İndir</button>
+      </div>
+    </div>
+    <div id="ysrStats"></div>
+    <div class="panel">
+      <div class="panel-body" style="padding:0;overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Kod</th><th>Numara / Cins</th><th>Birim</th><th>Mevcut Stok</th><th>Min Stok</th>
+            <th style="text-align:right">Dönem Giriş</th><th style="text-align:right">Dönem Çıkış</th>
+            <th style="text-align:right">Stok Değeri</th><th>Son Hareket</th><th>İşlem</th>
+          </tr></thead>
+          <tbody id="ysrTableBody"><tr><td colspan="10"><div class="spinner"></div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  filterYarnStockReport();
+}
+
+async function filterYarnStockReport() {
+  try {
+    const from = document.getElementById('ysrFrom')?.value || '';
+    const to = document.getElementById('ysrTo')?.value || '';
+    const res = await api('yarn_stock_report', { from, to });
+    _yarnReportCache = res.data || [];
+    const period = res.period || {};
+
+    let totalStock = 0, totalValue = 0, totalValueUsd = 0, totalValueEur = 0;
+    let critCount = 0, totalGiris = 0, totalCikis = 0;
+    _yarnReportCache.forEach(y => {
+      const cs = parseFloat(y.current_stock) || 0;
+      const mp = parseFloat(y.min_stock) || 0;
+      totalStock += cs;
+      if (cs <= mp && mp > 0) critCount++;
+      const val = cs * (parseFloat(y.unit_price) || 0);
+      if (y.currency === 'USD') totalValueUsd += val;
+      else if (y.currency === 'EUR') totalValueEur += val;
+      else totalValue += val;
+      totalGiris += parseFloat(y.period_giris) || 0;
+      totalCikis += parseFloat(y.period_cikis) || 0;
+    });
+
+    const statsEl = document.getElementById('ysrStats');
+    if (statsEl) {
+      const subParts = [];
+      if (totalValueUsd > 0) subParts.push(`${fmtMoney(totalValueUsd)} $`);
+      if (totalValueEur > 0) subParts.push(`${fmtMoney(totalValueEur)} €`);
+      const subVal = subParts.length ? subParts.join(' · ') : '';
+      statsEl.innerHTML = `
+        <div class="kpi-grid" style="margin-bottom:16px">
+          <div class="kpi-card">
+            <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Toplam Stok</div>
+            <div class="kpi-value" style="font-size:26px;font-weight:800;color:var(--accent)">${fmtQty(totalStock)}</div>
+            <div style="font-size:11px;color:var(--text3)">${_yarnReportCache.length} İplik</div>
+          </div>
+          <div class="kpi-card">
+            <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Kritik Stok</div>
+            <div class="kpi-value" style="font-size:26px;font-weight:800;color:${critCount > 0 ? 'var(--danger)' : 'var(--accent2)'}">${critCount}</div>
+          </div>
+          <div class="kpi-card">
+            <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Stok Değeri (TL)</div>
+            <div class="kpi-value" style="font-size:22px;font-weight:800;color:var(--accent3)">${fmtMoney(totalValue)} ₺</div>
+            ${subVal ? `<div style="font-size:11px;color:var(--text3);font-weight:700">USD/EUR: ${subVal}</div>` : ''}
+          </div>
+          <div class="kpi-card">
+            <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Dönem Giriş / Çıkış</div>
+            <div class="kpi-value" style="font-size:22px;font-weight:800;color:var(--accent2)">${fmtQty(totalGiris)}</div>
+            <div style="font-size:10px;color:var(--text3)">vs Çıkış ${fmtQty(totalCikis)}</div>
+          </div>
+        </div>`;
+    }
+
+    const tbody = document.getElementById('ysrTableBody');
+    if (!tbody) return;
+    if (!_yarnReportCache.length) {
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">Bu dönem için iplik bulunamadı</div></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = _yarnReportCache.map(y => {
+      const cs = parseFloat(y.current_stock) || 0;
+      const mp = parseFloat(y.min_stock) || 0;
+      const pg = parseFloat(y.period_giris) || 0;
+      const pc = parseFloat(y.period_cikis) || 0;
+      const stockVal = cs * (parseFloat(y.unit_price) || 0);
+      const isCrit = cs <= mp && mp > 0;
+      return `
+      <tr style="cursor:pointer" onclick="showYarnCard(${y.id})">
+        <td><span style="font-weight:700;color:var(--accent3);font-family:monospace">${y.code}</span></td>
+        <td style="font-size:13px">
+          <span style="font-weight:800">${yarnNumaraLabel(y)}</span>
+          ${y.cins ? `<span style="font-weight:600;color:var(--text2)"> ${y.cins}</span>` : ''}
+        </td>
+        <td style="font-size:12px;text-align:center">${y.unit}</td>
+        <td>
+          <span style="font-weight:800;font-size:14px;color:${isCrit ? 'var(--danger)' : 'var(--accent)'}">${fmtQty(cs)}</span>
+          <span style="font-size:10px;color:var(--text3)"> ${y.unit}</span>
+          ${isCrit ? '<span style="display:inline-block;background:rgba(255,80,80,.15);color:var(--danger);font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:4px">KRİTİK</span>' : ''}
+        </td>
+        <td style="font-size:12px;text-align:center">${fmtQty(mp)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--accent2)">${pg > 0 ? '+' + fmtQty(pg) : '-'}</td>
+        <td style="text-align:right;font-weight:700;color:var(--danger)">${pc > 0 ? '-' + fmtQty(pc) : '-'}</td>
+        <td style="text-align:right;font-weight:700;color:var(--accent3)">${fmtMoney(stockVal)} <span style="font-size:10px;color:var(--text3)">${y.currency}</span></td>
+        <td style="font-size:11px">${y.last_movement_date ? fmtDate(y.last_movement_date) : '-'}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();showYarnCard(${y.id})" title="İplik Kartı">📋</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function showYarnCard(yarnId) {
+  const y = _yarnReportCache.find(x => x.id == yarnId);
+  if (!y) return;
+  const cs = parseFloat(y.current_stock) || 0;
+  const mp = parseFloat(y.min_stock) || 0;
+  const isCrit = cs <= mp && mp > 0;
+  const stockVal = cs * (parseFloat(y.unit_price) || 0);
+
+  openModal(`İplik Kartı — ${y.code}`, `
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--surface2);padding:14px;border-radius:8px;border:1px solid var(--border)">
+        <div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Kod</div>
+          <div style="font-weight:700;font-family:monospace;margin-top:4px;color:var(--accent3)">${y.code}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Numara</div>
+          <div style="font-weight:700;margin-top:4px">${yarnNumaraLabel(y)} ${y.cins || ''}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Tedarikçi</div>
+          <div style="margin-top:4px">${y.supplier || '-'}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Birim Fiyat</div>
+          <div style="margin-top:4px">${fmtMoney(y.unit_price)} ${y.currency}</div>
+        </div>
+        <div style="grid-column:1/-1;background:${isCrit ? 'rgba(255,80,80,.1)' : 'rgba(0,212,170,.1)'};border:1px solid ${isCrit ? 'var(--danger)' : 'var(--accent)'};border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Mevcut Stok</div>
+          <div style="font-size:32px;font-weight:900;color:${isCrit ? 'var(--danger)' : 'var(--accent)'};margin:4px 0">${fmtQty(cs)} <span style="font-size:14px;color:var(--text3)">${y.unit}</span></div>
+          ${isCrit ? `<div style="font-size:11px;color:var(--danger);font-weight:700">⚠️ Min stok seviyesinin altında! (Min: ${fmtQty(mp)} ${y.unit})</div>` : `<div style="font-size:11px;color:var(--text3)">Min: ${fmtQty(mp)} ${y.unit} · Değer: ${fmtMoney(stockVal)} ${y.currency}</div>`}
+        </div>
+      </div>
+      <div>
+        <div class="form-section">📋 Dönem Hareketleri (${y.period_giris || 0} Giriş / ${y.period_cikis || 0} Çıkış)</div>
+        <div id="ycMovList" style="margin-top:8px"><div class="spinner"></div></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Kapat</button>
+      </div>
+    </div>
+  `, '560px');
+
+  try {
+    const from = document.getElementById('ysrFrom')?.value || '';
+    const to = document.getElementById('ysrTo')?.value || '';
+    const res = await api('yarn_movements', { yarn_id: yarnId, date_from: from, date_to: to });
+    const moves = res.data || [];
+    const el = document.getElementById('ycMovList');
+    if (!el) return;
+    if (!moves.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Bu dönemde hareket yok</div>';
+      return;
+    }
+    let balance = 0;
+    el.innerHTML = '<table style="width:100%;font-size:12px"><thead><tr><th style="text-align:left">Tarih</th><th>Tip</th><th style="text-align:right">Miktar</th><th style="text-align:right">Bakiye</th><th>Detay</th></tr></thead><tbody>' +
+      moves.reverse().map(m => {
+        const qty = parseFloat(m.quantity) || 0;
+        if (m.type === 'giris') balance += qty; else balance -= qty;
+        const isGiris = m.type === 'giris';
+        return `<tr>
+          <td style="font-size:11px">${fmtDate(m.date)}</td>
+          <td style="text-align:center"><span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${isGiris ? 'rgba(0,212,170,.1)' : 'rgba(255,80,80,.1)'};color:${isGiris ? 'var(--accent)' : 'var(--danger)'}">${isGiris ? 'GİRİŞ' : 'ÇIKIŞ'}</span></td>
+          <td style="text-align:right;font-weight:700;color:${isGiris ? 'var(--accent)' : 'var(--danger)'}">${isGiris ? '+' : '-'}${fmtQty(qty)}</td>
+          <td style="text-align:right;font-weight:800;color:${balance >= 0 ? 'var(--text)' : 'var(--danger)'}">${fmtQty(balance)}</td>
+          <td style="font-size:11px;color:var(--text3)">${m.loom_name ? 'Tezgah: ' + m.loom_name : ''}${m.destination ? m.destination : ''}${m.supplier ? m.supplier : ''}</td>
+        </tr>`;
+      }).join('') + '</tbody></table>';
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function exportYarnStockReport() {
+  if (!_yarnReportCache || !_yarnReportCache.length) return toast('Dışa aktarılacak veri yok', 'warning');
+  const data = _yarnReportCache.map(y => ({
+    'Kod': y.code || '',
+    'Numara': yarnNumaraLabel(y),
+    'Cins': y.cins || '',
+    'Birim': y.unit || '',
+    'Mevcut Stok': parseFloat(y.current_stock) || 0,
+    'Min Stok': parseFloat(y.min_stock) || 0,
+    'Dönem Giriş': parseFloat(y.period_giris) || 0,
+    'Dönem Çıkış': parseFloat(y.period_cikis) || 0,
+    'Birim Fiyat': parseFloat(y.unit_price) || 0,
+    'Para Birimi': y.currency || '',
+    'Stok Değeri': (parseFloat(y.current_stock) || 0) * (parseFloat(y.unit_price) || 0),
+    'Tedarikçi': y.supplier || '',
+    'Son Hareket': y.last_movement_date || '',
+    'Hareket Sayısı': y.movement_count || 0
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'İplik Stok Raporu');
+  XLSX.writeFile(wb, `Iplik_Stok_Raporu_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
