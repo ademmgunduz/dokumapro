@@ -589,7 +589,6 @@ function checkLicense() {
                     $onlineTime = substr($data['datetime'], 0, 10); // YYYY-MM-DD
                 }
             }
-            curl_close($ch);
         }
         
         // İnternet yoksa Google time API dene
@@ -606,7 +605,6 @@ function checkLicense() {
                     $onlineTime = substr($data['dateTime'], 0, 10);
                 }
             }
-            curl_close($ch);
         }
     
     // Tarih belirleme (öncelik: internet > bilgisayar > son bilinen)
